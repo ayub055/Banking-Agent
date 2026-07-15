@@ -9,7 +9,8 @@ from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
-from langchain_ollama import ChatOllama
+
+from utils.llm_factory import create_chat_model
 
 from schemas.customer_report import CustomerReport
 from utils.helpers import mask_customer_id, format_inr
@@ -37,8 +38,7 @@ def create_summary_chain(model_name: str = _SUMMARY_MODEL):
     """
     prompt = ChatPromptTemplate.from_template(CUSTOMER_REVIEW_PROMPT)
     reasoning = True if is_thinking_model(model_name) else None
-    llm = ChatOllama(model=model_name, temperature=LLM_TEMPERATURE, seed=LLM_SEED,
-                     reasoning=reasoning)
+    llm = create_chat_model(model_name, reasoning=reasoning)
 
     return prompt | llm
 

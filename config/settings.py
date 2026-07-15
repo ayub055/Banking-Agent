@@ -11,6 +11,20 @@ _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MODEL_NAME = "llama3.2"
 MAX_ITERATIONS = 10
 
+# LLM provider: "ollama" (local) or "kotak" (Model Gateway API)
+LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama").lower()
+
+# Kotak Model Gateway — used only when LLM_PROVIDER == "kotak" (see utils/llm_factory.py)
+KOTAK_TOKEN_URL = os.getenv("KOTAK_TOKEN_URL",
+    "https://uat.api.idam.kotak.internal/oauth2/token")
+KOTAK_API_URL = os.getenv("KOTAK_API_URL",
+    "https://dev.ai.kotak.internal/model/anthropic/api/v1/chat/completions")
+KOTAK_CLIENT_ID = os.getenv("KOTAK_CLIENT_ID", "")
+KOTAK_CLIENT_SECRET = os.getenv("KOTAK_CLIENT_SECRET", "")
+KOTAK_CA_BUNDLE = os.getenv("KOTAK_CA_BUNDLE", "")     # path to kotak-ca.pem ("" = system CAs)
+KOTAK_MODEL = os.getenv("KOTAK_MODEL", "sonnet3.5")
+KOTAK_MAX_TOKENS = int(os.getenv("KOTAK_MAX_TOKENS", "1024"))
+
 # Pipeline models
 PARSER_MODEL = "mistral"          # Intent parsing + report planner — needs fast JSON, no think tags
 EXPLAINER_MODEL = "llama3.2"      # Real-time query chat explainer — fast response

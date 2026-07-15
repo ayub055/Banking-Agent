@@ -1,0 +1,141 @@
+Usage¶
+Applications can interact with the models using any HTTP client or OpenAI-compliant client libraries. The examples below demonstrate how to use popular client libraries in different programming languages.
+
+Invoking models using cURL¶
+Follow the examples below to interact with models using cURL.
+Set the Authorization header with your valid IDAM token.
+Make sure you have cURL installed on your system.
+The examples show production URLs as primary examples, with dev environment alternatives provided.
+
+
+Model Invocation (Production)¶
+
+# Example using Claude Sonnet 3.5 in Production
+curl --location --request POST 'https://ai.kotak.internal/model/sonnet-3-5/api/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer <IDAM Token>' \
+--data-raw '{
+  "model": "sonnet3.5",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Tell me a joke."
+        }
+      ]
+    }
+  ],
+  "temperature": 0.7,
+  "top_p": 1,
+  "max_tokens": 150
+}'
+
+# Example using Qwen Coder 30B in Production
+curl --location --request POST 'https://ai.kotak.internal/model/qwen-30b/api/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer <IDAM Token>' \
+--data-raw '{
+  "model": "qwen3_coder_30b",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Write a Python function to calculate fibonacci numbers."
+        }
+      ]
+    }
+  ],
+  "temperature": 0.3,
+  "top_p": 1,
+  "max_tokens": 500
+}'
+Model Invocation (Dev Environment)¶
+
+# Example using Anthropic models in Dev (for development/testing)
+curl --location --request POST 'https://dev.ai.kotak.internal/model/anthropic/api/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer <IDAM Token>' \
+--data-raw '{
+  "model": "sonnet3.5",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Tell me a joke."
+        }
+      ]
+    }
+  ],
+  "temperature": 0.7,
+  "top_p": 1,
+  "max_tokens": 150
+}'
+
+# Example using Qwen models in Dev (for development/testing)
+curl --location --request POST 'https://dev.ai.kotak.internal/model/qwen/api/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer <IDAM Token>' \
+--data-raw '{
+  "model": "qwen3_coder_30b",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Write a Python function to calculate fibonacci numbers."
+        }
+      ]
+    }
+  ],
+  "temperature": 0.3,
+  "top_p": 1,
+  "max_tokens": 500
+}'
+
+
+Model Invocation (secured)¶
+For secure communication, SSL must be used when invoking the model. Follow the example below for SSL-enabled requests.
+
+The server uses an SSL Certificate signed by Kotak Certificate Authority. You must use the certificate chain to verify the hostname.
+
+Export the Kotak root certificates to kotak-ca.pem by following the instructions here
+
+Important security considerations:
+
+Store certificates in a secure location with appropriate permissions
+Use environment variables or secure vaults for sensitive values
+Never commit certificates or secrets to version control
+Example model invocation using kotak-ca.pem:
+
+Certificate path: ~/kotak-ca.pem (update the path as needed)
+Use HTTPS for all requests
+
+curl --cacert ~/kotak-ca.pem --location --request POST 'https://ai.kotak.internal/model/sonnet-3-5/api/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header 'Authorization: Bearer <IDAM Token>' \
+--data-raw '{
+  "model": "sonnet3.5",
+  "messages": [
+    {
+      "role": "user",
+      "content": [
+        {
+          "type": "text",
+          "text": "Tell me a joke."
+        }
+      ]
+    }
+  ],
+  "temperature": 0.7,
+  "top_p": 1,
+  "max_tokens": 150
+}'
+
+

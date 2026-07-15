@@ -2,7 +2,7 @@
 
 import time
 from typing import List, Dict, Any, Iterator, Optional
-from langchain_ollama import ChatOllama
+from utils.llm_factory import create_chat_model
 
 from schemas.intent import ParsedIntent
 from schemas.response import ToolResult
@@ -23,7 +23,7 @@ class ResponseExplainer:
             stream_delay: Delay in seconds between streaming chunks (0.0 = no delay)
                          Use 0.02-0.05 for readable typing effect
         """
-        self.llm = ChatOllama(model=model_name, temperature=LLM_TEMPERATURE, seed=LLM_SEED)
+        self.llm = create_chat_model(model_name)
         self.stream_delay = stream_delay
 
     def explain(

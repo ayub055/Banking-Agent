@@ -3,7 +3,7 @@
 import json
 import logging
 from typing import Optional
-from langchain_ollama import ChatOllama
+from utils.llm_factory import create_chat_model
 
 from schemas.transaction_insights import TransactionInsights, TransactionPattern
 from utils.transaction_filter import (
@@ -22,7 +22,7 @@ class TransactionInsightExtractor:
     """Extracts transaction patterns using LLM."""
 
     def __init__(self, model_name: str = "mistral"):
-        self.llm = ChatOllama(model=model_name, temperature=LLM_TEMPERATURE, format="json", seed=LLM_SEED)
+        self.llm = create_chat_model(model_name, json_mode=True)
 
     def extract(
         self,

@@ -4,7 +4,7 @@ import json
 import logging
 import re
 from difflib import get_close_matches
-from langchain_ollama import ChatOllama
+from utils.llm_factory import create_chat_model
 
 from schemas.intent import ParsedIntent, IntentType, CONFIDENCE_THRESHOLD_RETRY
 from config.settings import PARSER_MODEL, LLM_SEED, LLM_TEMPERATURE
@@ -115,7 +115,7 @@ def calculate_confidence(parsed: dict, query: str) -> float:
 
 class IntentParser:
     def __init__(self, model_name: str = PARSER_MODEL):
-        self.llm = ChatOllama(model=model_name, temperature=LLM_TEMPERATURE, format="json", seed=LLM_SEED)
+        self.llm = create_chat_model(model_name, json_mode=True)
 
     def parse(self, query: str) -> ParsedIntent:
         prompt = PARSER_PROMPT.format(query=query)
