@@ -1,0 +1,85 @@
+"""BANK_ANALYSER CLI entry.
+
+Report generation:
+    python main.py --customer 698167220
+    python main.py --customer 698167220 --theme bank_v2
+    python main.py "Generate customer report for customer 698167220"
+
+Banking-only chat:
+    python main.py --chat
+"""
+
+import argparse
+import logging
+import re
+import sys
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
+
+def _extract_customer_id(text: str) -> int:
+    m = re.search(r"\b(\d{5,})\b", text)
+    if not m:
+        raise SystemExit(f"Could not parse customer id from: {text!r}")
+    return int(m.group(1))
+
+
+def _run_chat() -> None:
+    from pipeline.core.orchestrator import TransactionPipeline
+    pipeline = TransactionPipeline(verbose=False)
+    print("Banking chat ready. Type 'exit' to quit.\n")
+    while True:
+        try:
+            query = input("> ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print()
+            return
+        if not query:
+            continue
+        if query.lower() in {"exit", "quit"}:
+            return
+        for chunk in pipeline.query_stream(query):
+            print(chunk, end="", flush=True)
+        print("\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Generate a banking-only customer report or run the chat loop")
+    parser.add_argument("--customer", type=int, help="Customer id (e.g. 698167220)")
+    parser.add_argument("--theme", default="bank_v2", choices=["bank_v2"],
+                        help="Report theme (only the bank_v2 Chart.js layout is supported)")
+    parser.add_argument("--chat", action="store_true", help="Run banking-only interactive chat")
+    parser.add_argument("--serve", action="store_true",
+                        help="After generating the report, serve it on http://127.0.0.1 with the admin /save endpoint enabled")
+    parser.add_argument("--port", type=int, default=8765, help="Port for --serve (default 8765)")
+    parser.add_argument("query", nargs="*", help="Free-text query (e.g. 'Generate customer report for customer 124')")
+    args = parser.parse_args()
+
+    if args.chat:
+        _run_chat()
+        return
+
+    if args.customer is not None:
+        cid = args.customer
+    elif args.query:
+        cid = _extract_customer_id(" ".join(args.query))
+    else:
+        text = input("Enter query (e.g. 'Generate customer report for customer 698167220'): ").strip()
+        cid = _extract_customer_id(text)
+
+    from tools.bank_report import generate_bank_report
+    report, path = generate_bank_report(cid, theme=args.theme)
+    if report is None:
+        print(f"No banking data for customer {cid}")
+        sys.exit(1)
+    print(f"Report generated: {path}")
+    html_path = path.replace('.pdf', '.html')
+    print(f"HTML: {html_path}")
+
+    if args.serve:
+        from pipeline.renderers.serve_report import serve
+        serve(cid, html_path, port=args.port)
+
+
+if __name__ == "__main__":
+    main()

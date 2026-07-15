@@ -1,0 +1,946 @@
+# Category definitions for presence lookup
+# Each category can define:
+#   - display_name: Human-readable name
+#   - description: Category description
+#   - direction: D (debits only), C (credits only), or null (both)
+#   - min_count: Minimum transactions to consider "present" (default: 1)
+#   - category_matches: Exact category_of_txn values to match
+#   - keywords: Terms to match in transaction narration
+#   - aliases: Alternative names users might use in queries
+
+categories:
+  mnc_companies:
+    display_name: "MNC Companies"
+    description: "Transactions with multinational corporations"
+    direction: null
+    min_count: 1
+    category_matches:
+      - MNC_Companies
+    keywords:
+      - mnc
+      - multinational
+      - corporate
+    aliases:
+      - mnc
+      - multinational
+      - corporate
+
+  digital_betting_gaming:
+    display_name: "Digital Betting & Gaming"
+    description: "Gambling, betting, or gaming transactions"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Digital_Betting_Gaming
+    keywords:
+      - bet
+      - betting
+      - gambl
+      - casino
+      - poker
+      - lottery
+      - dream11
+      - fantasy
+      - stake
+      - wager
+      - rummy
+      - teen patti
+      - mpl
+      - winzo
+      - gaming
+    aliases:
+      - betting
+      - gaming
+      - gambling
+      - lottery
+      - betting_gaming
+
+  food:
+    display_name: "Food & Dining"
+    description: "Food delivery and dining expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Food
+    keywords:
+      - swiggy
+      - zomato
+      - food
+      - restaurant
+      - cafe
+      - dining
+      - delivery
+      - dominos
+      - pizza
+      - uber eats
+      - mcdonalds
+      - kfc
+      - burger
+    aliases:
+      - food
+      - dining
+      - restaurants
+      - food delivery
+
+  liquor_smoke:
+    display_name: "Liquor & Smoke"
+    description: "Alcohol and tobacco purchases"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Liquor_Smoke
+    keywords:
+      - liquor
+      - alcohol
+      - wine
+      - beer
+      - whisky
+      - vodka
+      - cigarette
+      - tobacco
+      - smoke
+      - bar
+      - pub
+    aliases:
+      - liquor
+      - alcohol
+      - smoke
+      - tobacco
+      - drinks
+
+  bank_fees_charges:
+    display_name: "Bank Fees & Charges"
+    description: "Bank service fees and charges"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Bank_Fees_Charges
+    keywords:
+      - bank fee
+      - service charge
+      - maintenance charge
+      - annual fee
+      - penalty
+      - interest charge
+      - late fee
+      - overdraft
+    aliases:
+      - bank fees
+      - bank charges
+      - service fees
+
+  mobile_bills:
+    display_name: "Mobile Bills"
+    description: "Mobile phone recharges and bill payments"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Mobile_Bills
+    keywords:
+      - mobile
+      - recharge
+      - prepaid
+      - postpaid
+      - jio
+      - airtel
+      - vi
+      - vodafone
+      - idea
+      - bsnl
+      - phone bill
+    aliases:
+      - mobile
+      - phone bill
+      - recharge
+      - telecom
+
+  wallets:
+    display_name: "Wallets"
+    description: "Digital wallet transactions"
+    direction: null
+    min_count: 1
+    category_matches:
+      - Wallets
+    keywords:
+      - paytm
+      - phonepe
+      - gpay
+      - google pay
+      - amazon pay
+      - mobikwik
+      - freecharge
+      - wallet
+    aliases:
+      - wallet
+      - digital wallet
+      - e-wallet
+
+  e_commerce:
+    display_name: "E-Commerce"
+    description: "Online shopping transactions"
+    direction: D
+    min_count: 1
+    category_matches:
+      - E_Commerce
+    keywords:
+      - amazon
+      - flipkart
+      - myntra
+      - ajio
+      - nykaa
+      - meesho
+      - snapdeal
+      - shopclues
+      - online shopping
+      - e-commerce
+    aliases:
+      - ecommerce
+      - online shopping
+      - shopping
+
+  courier_logistics:
+    display_name: "Courier & Logistics"
+    description: "Courier and shipping services"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Courier_Logistics
+    keywords:
+      - courier
+      - delhivery
+      - bluedart
+      - dtdc
+      - fedex
+      - dhl
+      - shipping
+      - logistics
+      - delivery
+      - ecom express
+    aliases:
+      - courier
+      - shipping
+      - logistics
+      - delivery
+
+  air_travel:
+    display_name: "Air Travel"
+    description: "Flight bookings and airline expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Air_Travel
+    keywords:
+      - flight
+      - airline
+      - indigo
+      - spicejet
+      - air india
+      - vistara
+      - goair
+      - akasa
+      - airport
+      - aviation
+    aliases:
+      - flights
+      - airline
+      - air travel
+      - aviation
+
+  e_entertainment:
+    display_name: "E-Entertainment"
+    description: "Digital entertainment and streaming services"
+    direction: D
+    min_count: 1
+    category_matches:
+      - E_Entertainment
+    keywords:
+      - netflix
+      - amazon prime
+      - hotstar
+      - disney
+      - spotify
+      - youtube premium
+      - zee5
+      - sonyliv
+      - jiocinema
+      - voot
+      - streaming
+    aliases:
+      - entertainment
+      - streaming
+      - ott
+      - movies
+
+  mobility:
+    display_name: "Mobility"
+    description: "Transportation and mobility services"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Mobility
+    keywords:
+      - ola
+      - uber
+      - rapido
+      - metro
+      - bus
+      - transport
+      - commute
+    aliases:
+      - transport
+      - commute
+      - travel
+
+  railway:
+    display_name: "Railway"
+    description: "Railway and train bookings"
+    direction: D
+    min_count: 1
+    category_matches:
+      - railway recruit
+    keywords:
+      - railway
+      - train
+      - irctc
+      - rail
+      - station
+    aliases:
+      - railway
+      - train
+      - irctc
+
+  govt_tax_challan:
+    display_name: "Government Tax Challan"
+    description: "Government tax payments and challans"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Govt_Tax_Challan
+    keywords:
+      - tax
+      - challan
+      - gst
+      - income tax
+      - tds
+      - govt
+      - government
+    aliases:
+      - tax
+      - challan
+      - gst
+      - income tax
+
+  hospital:
+    display_name: "Hospital"
+    description: "Hospital and medical facility expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Hospital
+    keywords:
+      - hospital
+      - clinic
+      - doctor
+      - medical
+      - healthcare
+      - apollo
+      - fortis
+      - max hospital
+      - aiims
+    aliases:
+      - hospital
+      - medical
+      - healthcare
+      - clinic
+
+  grocery:
+    display_name: "Grocery"
+    description: "Grocery and supermarket purchases"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Grocery
+    keywords:
+      - grocery
+      - supermarket
+      - bigbasket
+      - grofers
+      - blinkit
+      - zepto
+      - instamart
+      - dmart
+      - reliance fresh
+    aliases:
+      - grocery
+      - groceries
+      - supermarket
+
+  fashion_beauty:
+    display_name: "Fashion & Beauty"
+    description: "Fashion, clothing, and beauty products"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Fashion_Beauty
+    keywords:
+      - fashion
+      - clothing
+      - beauty
+      - cosmetic
+      - makeup
+      - salon
+      - spa
+      - apparel
+      - garment
+    aliases:
+      - fashion
+      - beauty
+      - clothing
+      - cosmetics
+
+  equipment_construction:
+    display_name: "Equipment & Construction"
+    description: "Construction equipment and materials"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Equipment_Construction
+    keywords:
+      - equipment
+      - construction
+      - building
+      - material
+      - cement
+      - steel
+      - hardware
+    aliases:
+      - equipment
+      - construction
+      - building materials
+
+  pharmacy:
+    display_name: "Pharmacy"
+    description: "Pharmacy and medicine purchases"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Pharmacy
+    keywords:
+      - pharma
+      - pharmacy
+      - medicine
+      - drug
+      - 1mg
+      - netmeds
+      - pharmeasy
+      - apollo pharmacy
+      - medplus
+    aliases:
+      - pharmacy
+      - medicine
+      - drugs
+      - medical store
+
+  engineering:
+    display_name: "Engineering"
+    description: "Engineering services and products"
+    direction: null
+    min_count: 1
+    category_matches:
+      - engineering
+    keywords:
+      - engineering
+      - engineer
+      - technical
+    aliases:
+      - engineering
+      - technical
+
+  kids_school:
+    display_name: "Kids & School"
+    description: "Children's school fees and expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Kids_School
+    keywords:
+      - school
+      - tuition
+      - kids
+      - children
+      - nursery
+      - kindergarten
+      - school fee
+    aliases:
+      - school
+      - kids
+      - children
+      - tuition
+
+  education:
+    display_name: "Education"
+    description: "Education and learning expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Education
+    keywords:
+      - education
+      - college
+      - university
+      - course
+      - learning
+      - training
+      - coaching
+      - exam
+      - byju
+      - unacademy
+      - vedantu
+    aliases:
+      - education
+      - college
+      - university
+      - learning
+
+  rent:
+    display_name: "Rent"
+    description: "Rental payments for housing"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Rent
+    keywords:
+      - rent
+      - house rent
+      - apartment
+      - landlord
+      - rental
+      - lease
+      - accommodation
+      - pg payment
+    aliases:
+      - rent
+      - housing
+      - accommodation
+
+  jewelry_premium_gifts:
+    display_name: "Jewelry & Premium Gifts"
+    description: "Jewelry and premium gift purchases"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Jewelry_Premium_Gifts
+    keywords:
+      - jewelry
+      - jewellery
+      - gold
+      - silver
+      - diamond
+      - tanishq
+      - kalyan
+      - malabar
+      - gift
+      - premium
+    aliases:
+      - jewelry
+      - jewellery
+      - gold
+      - gifts
+
+  foreign_transaction:
+    display_name: "Foreign Transaction"
+    description: "International and foreign currency transactions"
+    direction: null
+    min_count: 1
+    category_matches:
+      - Foreign_Transaction
+    keywords:
+      - foreign
+      - international
+      - forex
+      - usd
+      - dollar
+      - euro
+      - pound
+      - remittance
+    aliases:
+      - foreign
+      - international
+      - forex
+      - remittance
+
+  payroll:
+    display_name: "Payroll"
+    description: "Payroll and salary disbursements"
+    direction: null
+    min_count: 1
+    category_matches:
+      - payroll
+    keywords:
+      - payroll
+      - salary disbursement
+      - wages
+      - employee payment
+    aliases:
+      - payroll
+      - wages
+
+  investment:
+    display_name: "Investment"
+    description: "Investment and mutual fund transactions"
+    direction: null
+    min_count: 1
+    category_matches:
+      - Investment
+    keywords:
+      - mutual fund
+      - investment
+      - sip
+      - stock
+      - shares
+      - demat
+      - zerodha
+      - groww
+      - upstox
+      - kuvera
+      - nps
+      - ppf
+      - fd
+      - fixed deposit
+    aliases:
+      - investments
+      - mutual funds
+      - stocks
+      - sip
+
+  salary:
+    display_name: "Salary"
+    description: "Regular salary or employment income"
+    direction: C
+    min_count: 1
+    category_matches:
+      - Salary
+    keywords:
+      - salary
+      - employee
+      - monthly pay
+      - compensation
+      - income
+    aliases:
+      - salary
+      - income
+      - pay
+      - employment income
+
+  electronics_appliance:
+    display_name: "Electronics & Appliances"
+    description: "Electronics and home appliance purchases"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Electronics_Appliance
+    keywords:
+      - electronics
+      - appliance
+      - mobile
+      - laptop
+      - computer
+      - tv
+      - refrigerator
+      - washing machine
+      - croma
+      - reliance digital
+      - vijay sales
+    aliases:
+      - electronics
+      - appliances
+      - gadgets
+
+  charity_donations:
+    display_name: "Charity & Donations"
+    description: "Charitable donations and contributions"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Charity_Donations
+    keywords:
+      - charity
+      - donation
+      - donate
+      - ngo
+      - trust
+      - foundation
+      - contribution
+    aliases:
+      - charity
+      - donation
+      - donations
+      - contribution
+
+  books_stationery:
+    display_name: "Books & Stationery"
+    description: "Books and stationery purchases"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Books_Stationery
+    keywords:
+      - book
+      - stationery
+      - pen
+      - notebook
+      - kindle
+      - amazon books
+    aliases:
+      - books
+      - stationery
+
+  fuel:
+    display_name: "Fuel"
+    description: "Fuel and petrol expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Fuel
+    keywords:
+      - fuel
+      - petrol
+      - diesel
+      - gas
+      - petroleum
+      - hp
+      - indian oil
+      - bharat petroleum
+      - shell
+    aliases:
+      - fuel
+      - petrol
+      - diesel
+      - gas
+
+  govt_companies:
+    display_name: "Government Companies"
+    description: "Transactions with government companies"
+    direction: null
+    min_count: 1
+    category_matches:
+      - Govt_Companies
+    keywords:
+      - govt
+      - government
+      - psu
+      - public sector
+    aliases:
+      - government
+      - govt
+      - psu
+
+  hotel:
+    display_name: "Hotel"
+    description: "Hotel and accommodation bookings"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Hotel
+    keywords:
+      - hotel
+      - resort
+      - oyo
+      - makemytrip
+      - goibibo
+      - booking
+      - accommodation
+      - stay
+    aliases:
+      - hotel
+      - hotels
+      - stay
+      - accommodation
+
+  insurance:
+    display_name: "Insurance"
+    description: "Insurance premium payments"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Insurance
+    keywords:
+      - insurance
+      - premium
+      - lic
+      - health insurance
+      - life insurance
+      - motor insurance
+      - policy
+      - hdfc life
+      - icici prudential
+      - sbi life
+    aliases:
+      - insurance
+      - premium
+      - policy
+
+  personal_home_services:
+    display_name: "Personal & Home Services"
+    description: "Personal and home services"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Personal_Home_Services
+    keywords:
+      - home service
+      - cleaning
+      - plumber
+      - electrician
+      - carpenter
+      - urban company
+      - urban clap
+      - housejoy
+    aliases:
+      - home services
+      - personal services
+      - maintenance
+
+  pet_care:
+    display_name: "Pet Care"
+    description: "Pet care and veterinary expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Pet_Care
+    keywords:
+      - pet
+      - veterinary
+      - vet
+      - dog
+      - cat
+      - animal
+      - pet shop
+    aliases:
+      - pet
+      - pets
+      - veterinary
+
+  taxi_cab:
+    display_name: "Taxi/Cab"
+    description: "Taxi and cab services"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Taxi/Cab
+    keywords:
+      - taxi
+      - cab
+      - ola
+      - uber
+      - rapido
+      - meru
+    aliases:
+      - taxi
+      - cab
+      - ride
+
+  real_estate:
+    display_name: "Real Estate"
+    description: "Real estate transactions"
+    direction: null
+    min_count: 1
+    category_matches:
+      - Real_Estate
+    keywords:
+      - real estate
+      - property
+      - land
+      - flat
+      - apartment
+      - house
+      - plot
+      - builder
+    aliases:
+      - real estate
+      - property
+      - housing
+
+  sports_fitness:
+    display_name: "Sports & Fitness"
+    description: "Sports and fitness expenses"
+    direction: D
+    min_count: 1
+    category_matches:
+      - Sports_Fitness
+    keywords:
+      - gym
+      - fitness
+      - sports
+      - cult fit
+      - gold gym
+      - workout
+      - yoga
+    aliases:
+      - sports
+      - fitness
+      - gym
+      - workout
+
+  emi:
+    display_name: "EMI"
+    description: "Equated monthly installment payments"
+    direction: D
+    min_count: 1
+    category_matches:
+      - EMI
+    keywords:
+      - emi
+      - loan
+      - installment
+      - repayment
+      - bajaj finance
+      - hdfc loan
+      - icici loan
+    aliases:
+      - emi
+      - loan
+      - installment
+
+  finance:
+    display_name: "Finance"
+    description: "Financial services and transactions"
+    direction: null
+    min_count: 1
+    category_matches:
+      - Finance
+    keywords:
+      - finance
+      - financial
+      - nbfc
+      - lending
+      - credit
+    aliases:
+      - finance
+      - financial services
+      - lending
+
+  p2p:
+    display_name: "P2P Transfers"
+    description: "Person-to-person money transfers"
+    direction: null
+    min_count: 1
+    category_matches:
+      - P2P
+    keywords:
+      - transfer
+      - sent to
+      - received from
+      - upi
+      - p2p
+    aliases:
+      - transfers
+      - person to person
+      - p2p
+
+# Fallback configuration for unknown categories
+fallback:
+  min_count: 1
+  direction: null
+  use_fuzzy_match: true
+  fuzzy_threshold: 70
