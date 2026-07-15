@@ -21,7 +21,10 @@ KOTAK_API_URL = os.getenv("KOTAK_API_URL",
     "https://dev.ai.kotak.internal/model/anthropic/api/v1/chat/completions")
 KOTAK_CLIENT_ID = os.getenv("KOTAK_CLIENT_ID", "")
 KOTAK_CLIENT_SECRET = os.getenv("KOTAK_CLIENT_SECRET", "")
+KOTAK_SCOPE = os.getenv("KOTAK_SCOPE", "openid profile email")
 KOTAK_CA_BUNDLE = os.getenv("KOTAK_CA_BUNDLE", "")     # path to kotak-ca.pem ("" = system CAs)
+# Set to "false" for the dev gateway (internal CA not trusted); ignored if CA bundle is set
+KOTAK_VERIFY_SSL = os.getenv("KOTAK_VERIFY_SSL", "true").strip().lower() not in ("false", "0", "no")
 KOTAK_MODEL = os.getenv("KOTAK_MODEL", "sonnet3.5")
 KOTAK_MAX_TOKENS = int(os.getenv("KOTAK_MAX_TOKENS", "1024"))
 

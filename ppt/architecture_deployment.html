@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Deployment Architecture — Bank Analyser (Hostable Components)</title>
+<style>
+  :root{
+    --bg:#f4f6fb; --ink:#0f172a; --muted:#64748b; --line:#e2e8f0; --card:#ffffff;
+    --gpu:#7c3aed; --gpu-bg:#f3eefe; --gpu-line:#ddd0fb;
+    --cpu:#2563eb; --cpu-bg:#eaf1fe; --cpu-line:#c9ddfc;
+    --data:#d97706; --data-bg:#fdf3e6; --data-line:#f6dcae;
+    --out:#059669; --out-bg:#e7f7f0; --out-line:#bfead9;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);line-height:1.5;}
+  .wrap{max-width:1180px;margin:0 auto;padding:0 24px 80px;}
+
+  /* HEADER */
+  header{background:linear-gradient(135deg,#0b1220 0%,#1e293b 60%,#312e81 100%);color:#fff;padding:34px 0 30px;margin-bottom:30px;}
+  header .wrap{padding-bottom:0;}
+  .kicker{font-size:12px;letter-spacing:2px;text-transform:uppercase;color:#a5b4fc;font-weight:700;}
+  header h1{font-size:27px;font-weight:800;margin:8px 0 6px;}
+  header p{font-size:14px;color:#cbd5e1;max-width:760px;}
+  .meta-row{display:flex;gap:10px;flex-wrap:wrap;margin-top:16px;}
+  .meta-pill{background:rgba(255,255,255,.08);border:1px solid rgba(165,180,252,.35);border-radius:20px;padding:5px 14px;font-size:11.5px;color:#e0e7ff;}
+
+  /* SECTION */
+  section{margin-top:40px;}
+  .sec-head{display:flex;align-items:baseline;gap:12px;margin-bottom:6px;}
+  .sec-num{font-size:12px;font-weight:800;color:#fff;background:#312e81;border-radius:6px;padding:3px 9px;}
+  h2{font-size:19px;font-weight:800;}
+  .sec-sub{color:var(--muted);font-size:13.5px;margin:2px 0 20px;max-width:820px;}
+
+  /* LEGEND */
+  .legend{display:flex;gap:10px;flex-wrap:wrap;margin:18px 0 4px;}
+  .lg{display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 13px;font-size:12px;font-weight:600;}
+  .swatch{width:13px;height:13px;border-radius:4px;flex-shrink:0;}
+  .s-gpu{background:var(--gpu)} .s-cpu{background:var(--cpu)} .s-data{background:var(--data)} .s-out{background:var(--out)}
+
+  /* FLOW */
+  .flow{background:#fff;border:1px solid var(--line);border-radius:14px;padding:26px 22px;overflow-x:auto;}
+  .flow-track{display:flex;align-items:stretch;gap:0;min-width:940px;}
+  .stage{flex:1;min-width:150px;display:flex;flex-direction:column;}
+  .stage-body{flex:1;border:1px solid var(--line);border-radius:12px;padding:14px 14px 15px;background:#fcfdff;position:relative;}
+  .stage-tag{font-size:10px;font-weight:800;letter-spacing:.6px;text-transform:uppercase;color:var(--muted);}
+  .stage-title{font-size:14px;font-weight:800;margin:5px 0 7px;}
+  .stage-desc{font-size:11.5px;color:#475569;}
+  .stage-owner{margin-top:11px;font-size:10.5px;font-weight:700;border-radius:6px;padding:5px 8px;display:inline-block;}
+  .own-gpu{background:var(--gpu-bg);color:var(--gpu);border:1px solid var(--gpu-line);}
+  .own-cpu{background:var(--cpu-bg);color:var(--cpu);border:1px solid var(--cpu-line);}
+  .own-data{background:var(--data-bg);color:var(--data);border:1px solid var(--data-line);}
+  .own-out{background:var(--out-bg);color:var(--out);border:1px solid var(--out-line);}
+  .arrow{align-self:center;flex:0 0 30px;text-align:center;color:#94a3b8;font-size:22px;font-weight:700;}
+  .flow-hint{font-size:11.5px;color:var(--muted);margin-top:14px;text-align:center;}
+
+  /* COMPONENT CARDS */
+  .cards{display:grid;grid-template-columns:repeat(2,1fr);gap:20px;}
+  @media(max-width:820px){.cards{grid-template-columns:1fr}.flow-track{min-width:900px}}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden;border-top:4px solid var(--line);}
+  .card.gpu{border-top-color:var(--gpu)} .card.cpu{border-top-color:var(--cpu)}
+  .card.data{border-top-color:var(--data)} .card.out{border-top-color:var(--out)}
+  .card-head{padding:16px 18px 12px;}
+  .badge{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;border-radius:5px;padding:3px 8px;margin-bottom:9px;}
+  .b-gpu{background:var(--gpu-bg);color:var(--gpu)} .b-cpu{background:var(--cpu-bg);color:var(--cpu)}
+  .b-data{background:var(--data-bg);color:var(--data)} .b-out{background:var(--out-bg);color:var(--out)}
+  .card h3{font-size:16px;font-weight:800;}
+  .card .role{font-size:12.5px;color:#475569;margin-top:5px;}
+  .spec{border-top:1px solid var(--line);}
+  .spec-row{display:grid;grid-template-columns:120px 1fr;gap:10px;padding:9px 18px;border-bottom:1px solid #f1f5f9;font-size:12px;}
+  .spec-row:last-child{border-bottom:none;}
+  .spec-k{font-weight:700;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.4px;}
+  .spec-v{color:#1e293b;}
+  .spec-v code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;}
+  .chip{display:inline-block;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;font-size:11px;margin:2px 3px 0 0;}
+
+  /* CONTRACTS TABLE */
+  table{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:12.5px;}
+  th,td{text-align:left;padding:11px 14px;border-bottom:1px solid #f1f5f9;vertical-align:top;}
+  th{background:#f8fafc;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);font-weight:800;}
+  tr:last-child td{border-bottom:none;}
+  td code{background:#f1f5f9;padding:1px 5px;border-radius:4px;font-size:11px;}
+
+  /* SCENARIOS */
+  .scen{display:grid;grid-template-columns:1fr 1fr;gap:20px;}
+  @media(max-width:820px){.scen{grid-template-columns:1fr}}
+  .scen-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 20px;}
+  .scen-card h4{font-size:14px;font-weight:800;margin-bottom:4px;}
+  .scen-card .tag{font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.5px;}
+  .scen-card ul{margin:12px 0 0;padding-left:18px;}
+  .scen-card li{font-size:12.5px;color:#334155;margin-bottom:6px;}
+
+  /* WHY DECOUPLE */
+  .why{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;}
+  @media(max-width:820px){.why{grid-template-columns:1fr}}
+  .why-card{background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
+  .why-card .ic{font-size:20px;}
+  .why-card h4{font-size:13.5px;font-weight:800;margin:8px 0 5px;}
+  .why-card p{font-size:12px;color:#475569;}
+
+  .note{background:#fffbeb;border:1px solid #fde68a;border-left:4px solid #d97706;border-radius:10px;padding:14px 18px;font-size:12.5px;color:#713f12;margin-top:20px;}
+  .note b{color:#7c2d12;}
+  footer{margin-top:50px;padding-top:20px;border-top:1px solid var(--line);font-size:11.5px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="kicker">Deployment / Hosting Architecture</div>
+    <h1>Bank Analyser — Hostable Component Map</h1>
+    <p>How the transaction-to-report pipeline decomposes into independently deployable units. This is the
+       <b>target production view</b>: it shows what each component <i>is</i>, where it should run, and how
+       the pieces couple — so infrastructure owners can decide what to host where.</p>
+    <div class="meta-row">
+      <span class="meta-pill">Scope: report-generation pipeline</span>
+      <span class="meta-pill">View: target production</span>
+      <span class="meta-pill">5 deployable units</span>
+      <span class="meta-pill">Audience: infra / hosting decisions</span>
+    </div>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- LEGEND -->
+  <div class="legend">
+    <div class="lg"><span class="swatch s-gpu"></span>Model serving · GPU</div>
+    <div class="lg"><span class="swatch s-cpu"></span>Application runner · CPU</div>
+    <div class="lg"><span class="swatch s-data"></span>Data store</div>
+    <div class="lg"><span class="swatch s-out"></span>Output / serving</div>
+  </div>
+
+  <!-- 1. PIPELINE FLOW -->
+  <section>
+    <div class="sec-head"><span class="sec-num">01</span><h2>The pipeline, mapped to its owners</h2></div>
+    <p class="sec-sub">A single customer report flows left-to-right through five stages. Each stage is coloured by the
+       component that owns it. Two stages call out to <b>hosted models</b> (GPU); the rest is deterministic code and I/O (CPU + storage).</p>
+
+    <div class="flow">
+      <div class="flow-track">
+
+        <div class="stage">
+          <div class="stage-body">
+            <div class="stage-tag">Input</div>
+            <div class="stage-title">Raw transactions</div>
+            <div class="stage-desc">Per-customer bank transaction rows (date, amount, narration, DR/CR).</div>
+            <span class="stage-owner own-data">Data Store</span>
+          </div>
+        </div>
+        <div class="arrow">&rarr;</div>
+
+        <div class="stage">
+          <div class="stage-body">
+            <div class="stage-tag">Step 1 · Tag</div>
+            <div class="stage-title">Categorise</div>
+            <div class="stage-desc">Encoder model tags every row with an L1/L2 category &rarr; <b>tagged transactions</b>.</div>
+            <span class="stage-owner own-gpu">Tagging Encoder</span>
+          </div>
+        </div>
+        <div class="arrow">&rarr;</div>
+
+        <div class="stage">
+          <div class="stage-body">
+            <div class="stage-tag">Step 2 · Features</div>
+            <div class="stage-title">Build features</div>
+            <div class="stage-desc">Agent calls deterministic tools: salary, EMIs, cashflow, events, merchants, account quality.</div>
+            <span class="stage-owner own-cpu">Agent Runner</span>
+          </div>
+        </div>
+        <div class="arrow">&rarr;</div>
+
+        <div class="stage">
+          <div class="stage-body">
+            <div class="stage-tag">Step 3 · Summarise</div>
+            <div class="stage-title">Narrate</div>
+            <div class="stage-desc">Runner sends structured features to the decoder LLM &rarr; executive prose review.</div>
+            <span class="stage-owner own-gpu">Decoder LLM</span>
+          </div>
+        </div>
+        <div class="arrow">&rarr;</div>
+
+        <div class="stage">
+          <div class="stage-body">
+            <div class="stage-tag">Step 4 · Render &amp; serve</div>
+            <div class="stage-title">Report out</div>
+            <div class="stage-desc">Render HTML + Excel, then serve the artifact (with admin override endpoint).</div>
+            <span class="stage-owner own-out">Report Serving</span>
+          </div>
+        </div>
+
+      </div>
+      <div class="flow-hint">Numbers and business rules never leave the CPU tier. The two GPU calls are the only ML inference — one to <b>tag</b>, one to <b>narrate</b>.</div>
+    </div>
+  </section>
+
+  <!-- 2. COMPONENTS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">02</span><h2>The five hostable components</h2></div>
+    <p class="sec-sub">Each card is one deployable unit with its own host profile. The two model services are stateless GPU
+       workloads that can be hosted, scaled, and versioned independently of the application code.</p>
+
+    <div class="cards">
+
+      <!-- C1 ENCODER -->
+      <div class="card gpu">
+        <div class="card-head">
+          <span class="badge b-gpu">Component 1 · Model serving (GPU)</span>
+          <h3>Transaction Tagging Encoder</h3>
+          <div class="role">Customer-trained encoder (transformer classifier) that reads each transaction's
+             narration + amount + direction and assigns an <b>L2 &rarr; L1 category</b>. Turns raw rows into <b>tagged transactions</b>.</div>
+        </div>
+        <div class="spec">
+          <div class="spec-row"><div class="spec-k">Compute</div><div class="spec-v">GPU inference (small/mid transformer). CPU-servable at low volume.</div></div>
+          <div class="spec-row"><div class="spec-k">State</div><div class="spec-v">Stateless. Model weights are the only artifact; versioned per training run.</div></div>
+          <div class="spec-row"><div class="spec-k">Scales by</div><div class="spec-v">Transaction volume (rows/sec). Batch-friendly, horizontally replicable.</div></div>
+          <div class="spec-row"><div class="spec-k">Interface</div><div class="spec-v">Batch/REST: <code>rows[] &rarr; tags[]</code>. No business logic inside.</div></div>
+          <div class="spec-row"><div class="spec-k">Why separate</div><div class="spec-v">Retrained on its own cadence; needs GPU; owned by an ML team, not app devs.</div></div>
+        </div>
+      </div>
+
+      <!-- C2 DECODER -->
+      <div class="card gpu">
+        <div class="card-head">
+          <span class="badge b-gpu">Component 2 · Model serving (GPU)</span>
+          <h3>Decoder LLM (Narrative Summaries)</h3>
+          <div class="role">Generative decoder model that turns the structured feature set into an
+             analyst-grade <b>executive review</b>. Prose only — it never computes numbers.</div>
+        </div>
+        <div class="spec">
+          <div class="spec-row"><div class="spec-k">Compute</div><div class="spec-v">GPU. Served via Ollama / vLLM (OpenAI-compatible).</div></div>
+          <div class="spec-row"><div class="spec-k">Model</div><div class="spec-v">Configurable in <code>config/settings.py</code> — default <code>llama3.2</code>; <code>deepseek-r1</code> supported (think-trace stripping).</div></div>
+          <div class="spec-row"><div class="spec-k">State</div><div class="spec-v">Stateless per request. Deterministic (<code>temperature=0</code>, <code>seed=42</code>).</div></div>
+          <div class="spec-row"><div class="spec-k">Scales by</div><div class="spec-v">Concurrent reports. Bottleneck = GPU throughput; queue or replicate.</div></div>
+          <div class="spec-row"><div class="spec-k">Interface</div><div class="spec-v">REST prompt/response. Fail-soft: runner still emits a report if this is down.</div></div>
+        </div>
+      </div>
+
+      <!-- C3 RUNNER -->
+      <div class="card cpu">
+        <div class="card-head">
+          <span class="badge b-cpu">Component 3 · Application runner (CPU)</span>
+          <h3>Agent Runner + Feature Tools</h3>
+          <div class="role">The whole project codebase. An agent that orchestrates <b>deterministic feature-creation tools</b>,
+             assembles the typed <code>CustomerReport</code>, calls the decoder for narration, and renders output.</div>
+        </div>
+        <div class="spec">
+          <div class="spec-row"><div class="spec-k">Compute</div><div class="spec-v">CPU. Pure Python (pandas/pydantic). No GPU.</div></div>
+          <div class="spec-row"><div class="spec-k">Feature tools</div><div class="spec-v">
+            <span class="chip">salary detection</span><span class="chip">EMIs</span><span class="chip">cashflow</span>
+            <span class="chip">events</span><span class="chip">account quality</span><span class="chip">merchants</span>
+            <span class="chip">recurring rules</span><span class="chip">scorecard</span></div></div>
+          <div class="spec-row"><div class="spec-k">State</div><div class="spec-v">Stateless per report; in-process cache only. Config = single source of truth.</div></div>
+          <div class="spec-row"><div class="spec-k">Scales by</div><div class="spec-v">Reports/hour. Embarrassingly parallel — run N workers behind a queue.</div></div>
+          <div class="spec-row"><div class="spec-k">Depends on</div><div class="spec-v">Data Store (read) + both model services (network calls).</div></div>
+        </div>
+      </div>
+
+      <!-- C4 DATA -->
+      <div class="card data">
+        <div class="card-head">
+          <span class="badge b-data">Component 4 · Data store</span>
+          <h3>Transaction Data Store</h3>
+          <div class="role">System of record for input transactions and auxiliary signals the runner reads
+             (salary-string outputs, category registry reference).</div>
+        </div>
+        <div class="spec">
+          <div class="spec-row"><div class="spec-k">Today</div><div class="spec-v">Tab-separated CSVs (<code>rgs.csv</code>, <code>rg_sal_strings.csv</code>) on local disk.</div></div>
+          <div class="spec-row"><div class="spec-k">Target</div><div class="spec-v">Postgres / BigQuery. Swap is isolated to <code>data/loader.py</code>.</div></div>
+          <div class="spec-row"><div class="spec-k">Access</div><div class="spec-v">Read-heavy from runner. One admin write path (category overrides).</div></div>
+          <div class="spec-row"><div class="spec-k">Scales by</div><div class="spec-v">Customers &times; transaction history. Independent of compute tiers.</div></div>
+          <div class="spec-row"><div class="spec-k">Why separate</div><div class="spec-v">Data lifecycle, retention, and governance differ from application code.</div></div>
+        </div>
+      </div>
+
+      <!-- C5 OUTPUT -->
+      <div class="card out">
+        <div class="card-head">
+          <span class="badge b-out">Component 5 · Output / serving</span>
+          <h3>Report Serving &amp; Artifacts</h3>
+          <div class="role">Persists and serves the generated <b>HTML + Excel</b> reports, and exposes the admin
+             <code>/save</code> endpoint for category overrides that feed corrections back to the data store.</div>
+        </div>
+        <div class="spec">
+          <div class="spec-row"><div class="spec-k">Compute</div><div class="spec-v">Lightweight HTTP server (CPU). Can be static hosting + a small API.</div></div>
+          <div class="spec-row"><div class="spec-k">Artifacts</div><div class="spec-v">Rendered <code>*_report_v2.html</code> and <code>.xlsx</code> per customer.</div></div>
+          <div class="spec-row"><div class="spec-k">State</div><div class="spec-v">Object storage for artifacts; write-back edits route to Data Store.</div></div>
+          <div class="spec-row"><div class="spec-k">Scales by</div><div class="spec-v">Concurrent viewers. Fully decoupled from generation.</div></div>
+          <div class="spec-row"><div class="spec-k">Why separate</div><div class="spec-v">Viewing/serving has a different uptime + auth profile than batch generation.</div></div>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- 3. CONTRACTS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">03</span><h2>What crosses each boundary</h2></div>
+    <p class="sec-sub">The interfaces are deliberately narrow. If these contracts hold, any component can be re-hosted, replaced,
+       or scaled without touching the others.</p>
+    <table>
+      <thead><tr><th style="width:23%">From &rarr; To</th><th style="width:30%">Payload</th><th>Contract / notes</th></tr></thead>
+      <tbody>
+        <tr><td>Data Store &rarr; Runner</td><td>Raw transaction rows</td><td>Read query per customer. Only touch-point for a DB swap.</td></tr>
+        <tr><td>Runner &rarr; Tagging Encoder</td><td><code>rows[] &rarr; category tags[]</code></td><td>Stateless inference call; result attached as tagged transactions.</td></tr>
+        <tr><td>Runner &rarr; Decoder LLM</td><td>Structured feature summary (prompt)</td><td>Prose back only. Fail-soft — report still completes without it.</td></tr>
+        <tr><td>Runner &rarr; Output</td><td><code>CustomerReport</code> &rarr; HTML/Excel</td><td>Typed Pydantic object rendered by pure templates (no data lookups).</td></tr>
+        <tr><td>Output &rarr; Data Store</td><td>Admin category override</td><td>Write-back edit path (<code>/save</code>); re-derives L1 from L2.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- 4. WHY DECOUPLE -->
+  <section>
+    <div class="sec-head"><span class="sec-num">04</span><h2>Why this split</h2></div>
+    <div class="why">
+      <div class="why-card"><div class="ic">🧠</div><h4>Different hardware</h4>
+        <p>The two models want GPU; the runner and serving want cheap CPU. Splitting them stops you from paying for GPU on the 90% of work that is deterministic Python.</p></div>
+      <div class="why-card"><div class="ic">🔁</div><h4>Different lifecycles</h4>
+        <p>The tagging encoder is retrained; the decoder is swapped by config; the runner ships on app cadence; data has its own retention. Independent deploys mean independent release trains.</p></div>
+      <div class="why-card"><div class="ic">📈</div><h4>Independent scaling</h4>
+        <p>Scale report throughput by adding CPU runners; scale narration by adding GPU decoder replicas; scale tagging by batch size — each bottleneck is addressed in isolation.</p></div>
+      <div class="why-card"><div class="ic">🛡️</div><h4>Blast-radius control</h4>
+        <p>Fail-soft boundaries: if the decoder is down, reports still generate with deterministic content. Model outages degrade quality, they don't stop the pipeline.</p></div>
+      <div class="why-card"><div class="ic">👥</div><h4>Team ownership</h4>
+        <p>ML team owns the two model services; platform team owns the runner and data; each contract above is the hand-off point, so nobody edits across boundaries.</p></div>
+      <div class="why-card"><div class="ic">🔌</div><h4>Swappable parts</h4>
+        <p>Encoder, decoder model, and data backend are each replaceable behind a stable interface — a one-line config change or a single adapter file, not a rewrite.</p></div>
+    </div>
+  </section>
+
+  <!-- 5. HOSTING SCENARIOS -->
+  <section>
+    <div class="sec-head"><span class="sec-num">05</span><h2>Two ways to host the same five components</h2></div>
+    <p class="sec-sub">The decomposition is the same in dev and prod — only the placement changes.</p>
+    <div class="scen">
+      <div class="scen-card">
+        <div class="tag">Scenario A · Single box (dev / demo)</div>
+        <h4>All five co-located</h4>
+        <ul>
+          <li>Runner, encoder, decoder (local Ollama), CSV data, and the report server all on one machine.</li>
+          <li>Zero network hops; simplest to run (<code>python main.py --customer &lt;id&gt; --serve</code>).</li>
+          <li>Limits: one GPU shared by both models; no horizontal scaling; CSV in memory.</li>
+        </ul>
+      </div>
+      <div class="scen-card">
+        <div class="tag">Scenario B · Distributed (production)</div>
+        <h4>Split by hardware &amp; scaling need</h4>
+        <ul>
+          <li><b>GPU tier:</b> Tagging Encoder + Decoder LLM as separate model-serving endpoints.</li>
+          <li><b>CPU tier:</b> N Agent-Runner workers behind a queue/load balancer.</li>
+          <li><b>Data tier:</b> Postgres/BigQuery replacing CSVs (loader swap only).</li>
+          <li><b>Serving tier:</b> Object storage + web server for artifacts and admin edits.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <div class="note">
+    <b>Fidelity note (target vs. today).</b> This is the <b>target production</b> view. In the current repo, transaction
+    categories are <b>pre-computed and shipped in the data</b> (<code>category_of_txn</code> / <code>category_of_txn_l2</code> in
+    <code>rgs.csv</code>) with deterministic keyword rules — there is <b>no hosted encoder model yet</b>. Component&nbsp;1 above is
+    where that tagging becomes a customer-trained encoder service. Likewise the LLM runs on a <b>local Ollama</b> today; the diagram
+    shows it as a hostable GPU endpoint. Everything else (runner, feature tools, data, rendering/serving) matches the code as-is.
+  </div>
+
+  <footer>
+    Bank Analyser · Deployment architecture · target production view · report-generation pipeline · generated for infrastructure/hosting decisions.
+    Source of truth for models &amp; paths: <code>config/settings.py</code>. Component code: <code>tools/</code>, <code>pipeline/</code>, <code>data/loader.py</code>.
+  </footer>
+
+</div>
+</body>
+</html>

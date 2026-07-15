@@ -1,0 +1,1675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Banking Risk Report — {% if bank_v2 and bank_v2.header %}{{ bank_v2.header.customer_id|mask_id }}{% else %}Banking Report{% endif %}</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --indigo:#6366f1; --indigo-deep:#4338ca; --indigo-ink:#1e1b4b;
+    --green:#10b981; --amber:#f59e0b; --red:#ef4444; --grey:#cbd5e1;
+    --border:#e2e8f0; --chip:#eef2ff;
+    --shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+  .shell{max-width:1200px;margin:0 auto;padding:16px 20px 80px}
+
+  /* HEADER */
+  .topbar{
+    position:sticky;top:0;z-index:40;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+    border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:16px;
+    display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);
+  }
+  .topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--indigo-ink)}
+  .topbar .brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--indigo),var(--indigo-deep));display:grid;place-items:center;color:#fff;font-weight:900;font-size:12px}
+  .topbar .cust{display:flex;gap:18px;margin-left:8px;font-size:13px;color:var(--muted)}
+  .topbar .cust b{color:var(--ink)}
+  .topbar .spacer{flex:1}
+  .verdict-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px}
+  .verdict-pill.amber{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+  .verdict-pill.red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+  .verdict-pill.green{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+  .verdict-pill::before{content:"●"}
+  .btn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:600;font-size:12px;color:var(--ink)}
+  .btn:hover{border-color:var(--indigo);color:var(--indigo)}
+
+  /* SECTION NAV CHIPS */
+  .navchips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .navchips a{
+    padding:6px 12px;border-radius:999px;background:var(--chip);color:var(--indigo-deep);
+    font-size:12px;font-weight:600;text-decoration:none;border:1px solid transparent
+  }
+  .navchips a:hover{border-color:var(--indigo)}
+  .navchips a .badge{display:inline-block;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:999px;margin-left:4px}
+
+  /* KPI STRIP */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--indigo)}
+  .kpi.green::before{background:var(--green)}
+  .kpi.amber::before{background:var(--amber)}
+  .kpi.red::before{background:var(--red)}
+  .kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+  .kpi .value{font-size:20px;font-weight:800;color:var(--indigo-ink);margin-top:4px;line-height:1.15}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi .spark{height:28px;margin-top:6px}
+  .stress-gauge{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .stress-gauge .bar{flex:1;height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+  .stress-gauge .fill{height:100%;background:linear-gradient(90deg,var(--green),var(--amber),var(--red))}
+
+  /* PANEL BASE */
+  .panel{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--indigo-deep);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .panel h2::before{content:"";width:4px;height:16px;background:var(--indigo);border-radius:2px}
+  .panel h2 .count{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+  .muted{color:var(--muted);font-size:12.5px;font-style:italic}
+
+  /* CHECKLIST */
+  .checks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .check-col h3{font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:.4px}
+  .check{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid var(--border);margin-bottom:6px;font-size:13px}
+  .check .ico{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .check .lbl{flex:1;font-weight:500}
+  .check .det{font-size:11px;color:var(--muted)}
+  .check.red{background:#fef2f2;border-color:#fecaca}
+  .check.red .ico{background:var(--red);color:#fff}
+  .check.amber{background:#fffbeb;border-color:#fde68a}
+  .check.amber .ico{background:var(--amber);color:#fff}
+  .check.green{background:#f0fdf4;border-color:#bbf7d0}
+  .check.green .ico{background:var(--green);color:#fff}
+  .check.neutral .ico{background:#94a3b8;color:#fff}
+  .check .det{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+
+  /* SUMMARY */
+  .summary{background:linear-gradient(135deg,#eef2ff 0%,#fdf4ff 100%);border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.65;border:1px solid #e0e7ff}
+  .summary .more-toggle{color:var(--indigo);cursor:pointer;font-weight:600;font-size:12px}
+  .summary.clamped .more{display:none}
+  .summary:not(.clamped) .teaser-dots{display:none}
+
+  /* TABS */
+  .tabs{display:inline-flex;gap:0;background:#f1f5f9;padding:3px;border-radius:10px;margin-bottom:14px}
+  .tabs button{padding:6px 14px;border:none;background:transparent;font-weight:600;font-size:12.5px;color:var(--muted);border-radius:8px;cursor:pointer}
+  .tabs button.active{background:#fff;color:var(--indigo-deep);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .tab-body{display:none}
+  .tab-body.active{display:block}
+
+  /* TABLE */
+  table.data{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.data th{text-align:left;padding:10px 12px;background:#f8fafc;color:var(--muted);font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+  table.data td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+  table.data tr:hover td{background:#fafbff}
+  table.data td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  table.data td.dr{color:var(--red)}
+  table.data td.cr{color:var(--green)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.2px}
+  .tag.cat{background:var(--chip);color:var(--indigo-deep)}
+  .tag.emi{background:#fef3c7;color:#92400e}
+  .tag.salary{background:#d1fae5;color:#065f46}
+  .tag.upi{background:#e0e7ff;color:#3730a3}
+  .tag.fraud{background:#fee2e2;color:#991b1b}
+  .tag.inv{background:#cffafe;color:#155e75}
+  .tag.other{background:#f1f5f9;color:#475569}
+  .freq{font-size:11px;color:var(--muted)}
+
+  /* SALARY DOTS */
+  .sal-strip{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+  .sal-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:10px;color:#fff;font-weight:700}
+  .sal-dot.ok{background:var(--green)}
+  .sal-dot.late{background:var(--amber)}
+  .sal-dot.miss{background:var(--red)}
+
+  /* LOAN CARDS */
+  .loan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+  .loan-card{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fafbff;position:relative}
+  .loan-card .head{display:flex;justify-content:space-between;margin-bottom:10px}
+  .loan-card .head b{font-size:13.5px;color:var(--indigo-ink)}
+  .loan-card .amt{font-size:18px;font-weight:800;color:var(--red)}
+  .loan-card.cr .amt{color:var(--green)}
+  .loan-card .row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--muted)}
+  .loan-card .row b{color:var(--ink);font-weight:600}
+
+  /* REMITTERS */
+  .remit-grid{display:grid;grid-template-columns:2fr 3fr;gap:18px;align-items:start}
+  .remit-list{list-style:none}
+  .remit-list li{display:grid;grid-template-columns:30px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--border)}
+  .rank{width:24px;height:24px;border-radius:6px;background:var(--chip);color:var(--indigo-deep);display:grid;place-items:center;font-weight:700;font-size:11px}
+  .remit-list .name{font-weight:600}
+  .remit-list .meta{font-size:11px;color:var(--muted)}
+  .remit-list .amt{font-weight:700;font-variant-numeric:tabular-nums}
+
+  /* TX TABLE TOOLS */
+  .tx-tools{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .tx-tools input{padding:7px 12px;border:1px solid var(--border);border-radius:10px;font-size:12.5px;min-width:220px}
+  .tx-tools .chip{padding:5px 10px;border-radius:999px;background:#f1f5f9;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid transparent}
+  .tx-tools .chip.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+
+  /* CHARTS */
+  .chart-wrap{position:relative;height:280px}
+  .chart-wrap.sm{height:220px}
+
+  /* STRESS SPIKES */
+  .cf-trend-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer;user-select:none;font-weight:500;color:#334155;transition:background .15s}
+  .cf-trend-chip:hover{background:#eef2ff}
+  .cf-trend-chip input{margin:0;cursor:pointer}
+  /* Analysis panel */
+  .an-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:900px){.an-grid{grid-template-columns:1fr}}
+  .an-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:6px 0 12px;font-size:12px;color:var(--muted)}
+  .an-pillgrp{display:inline-flex;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:2px}
+  .an-pill{padding:4px 12px;border-radius:999px;cursor:pointer;font-weight:500;color:#475569;font-size:11.5px;letter-spacing:.02em}
+  .an-pill.active{background:#6366f1;color:#fff;box-shadow:0 1px 3px rgba(99,102,241,.35)}
+  .an-list{border:1px solid #e2e8f0;border-radius:10px;background:#fff;max-height:440px;overflow-y:auto}
+  .an-grp{border-bottom:1px solid #f1f5f9}
+  .an-grp:last-child{border-bottom:0}
+  .an-grp-head{padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6366f1;background:#f8fafc;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+  .an-grp-head .chev{transition:transform .15s;font-size:9px;opacity:.6}
+  .an-grp.collapsed .chev{transform:rotate(-90deg)}
+  .an-grp.collapsed .an-rows{display:none}
+  .an-row{padding:6px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:#1e293b;border-top:1px solid #f8fafc}
+  .an-row:hover{background:#f8fafc}
+  .an-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .an-row .opts{display:inline-flex;gap:6px;font-size:10.5px;color:#64748b}
+  .an-row .opts label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:1px 5px;border-radius:4px}
+  .an-row .opts label:hover{background:#eef2ff;color:#4338ca}
+  .an-row .opts input{margin:0;cursor:pointer;accent-color:#6366f1}
+  .an-foot{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;font-size:11px;border-top:1px solid #e2e8f0;background:#fafbfd;color:#64748b}
+  .an-foot a{color:#6366f1;cursor:pointer;text-decoration:none}
+  .an-foot a:hover{text-decoration:underline}
+  .an-empty{padding:36px 14px;text-align:center;color:#94a3b8;font-size:12px;border:1px dashed #e2e8f0;border-radius:10px}
+  .spike-note{font-size:11px;color:var(--red);margin-top:6px;display:flex;align-items:center;gap:6px}
+  .spike-note::before{content:"⚠"}
+
+  /* HEATMAP */
+  .heat-wrap{display:flex;flex-direction:column;gap:8px}
+  .heat-row{display:flex;align-items:center;gap:8px}
+  .heat-row .lbl{font-size:10px;color:var(--muted);width:44px;flex-shrink:0;text-align:right}
+  .heat-row .cells{display:grid;grid-template-columns:repeat(31,10px);gap:2px}
+  .heat-row .cells div{background:#e2e8f0;border-radius:2px;height:10px}
+  .heat-row .cells .l1{background:#c7d2fe}.heat-row .cells .l2{background:#818cf8}.heat-row .cells .l3{background:#6366f1}.heat-row .cells .l4{background:#4338ca}
+  .heat-axis{display:grid;grid-template-columns:repeat(31,10px);gap:2px;margin-left:52px;font-size:9px;color:var(--muted)}
+  .heat-axis div{text-align:center}
+  .heat-legend{font-size:11px;color:var(--muted)}
+
+  /* FOOTER */
+  .foot{text-align:center;color:var(--muted);font-size:11px;margin-top:20px}
+
+  /* ANALYST NOTEPAD — single floating panel, follows scroll, indigo theme */
+  .notepad{
+    position:fixed;top:96px;right:20px;width:300px;max-height:calc(100vh - 140px);
+    background:#fff;border:1px solid var(--border);border-radius:12px;
+    box-shadow:var(--shadow);z-index:45;display:flex;flex-direction:column;
+    transition:transform .25s ease, opacity .2s ease;overflow:hidden;
+  }
+  .notepad.hidden{transform:translateX(calc(100% + 28px));opacity:0;pointer-events:none}
+  .notepad .head{
+    display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:linear-gradient(135deg,var(--indigo) 0%,var(--indigo-deep) 100%);
+    color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    cursor:grab;
+  }
+  .notepad .head .icon{font-size:13px}
+  .notepad .head .lbl{flex:1}
+  .notepad .head .ctx{font-size:10px;font-weight:600;opacity:.85;text-transform:none;letter-spacing:0;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px}
+  .notepad .head .x{background:transparent;border:none;color:#fff;cursor:pointer;font-size:14px;padding:0 4px;opacity:.85;line-height:1}
+  .notepad .head .x:hover{opacity:1}
+  .notepad textarea{
+    flex:1;border:none;outline:none;resize:none;padding:10px 12px;
+    font-family:inherit;font-size:12.5px;line-height:1.55;color:var(--ink);
+    min-height:200px;background:#fff;
+  }
+  .notepad textarea::placeholder{color:var(--muted);opacity:.7}
+  .notepad .foot{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:6px 12px;border-top:1px solid var(--border);background:#f8fafc;
+    font-size:10.5px;color:var(--muted);
+  }
+  .notepad .foot .ts{font-style:italic}
+  .notepad .foot .insert{background:transparent;border:none;color:var(--indigo);cursor:pointer;font-size:11px;font-weight:600}
+  .notepad .foot .insert:hover{text-decoration:underline}
+
+  /* Collapsed tab — horizontal pill at top-right */
+  .notepad-tab{
+    position:fixed;top:96px;right:20px;z-index:44;
+    background:linear-gradient(135deg,var(--indigo) 0%,var(--indigo-deep) 100%);
+    color:#fff;border:none;cursor:pointer;
+    padding:8px 14px;border-radius:999px;
+    font-size:12px;font-weight:700;letter-spacing:.3px;
+    box-shadow:0 4px 14px rgba(99,102,241,.30);
+    display:none;align-items:center;gap:8px;
+  }
+  .notepad-tab.visible{display:inline-flex}
+  .notepad-tab:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(99,102,241,.40)}
+  .notepad-tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#fbbf24}
+
+  /* First-visit attention pulse */
+  @keyframes notepadPulse {
+    0%   { box-shadow:0 0 0 0 rgba(99,102,241,.55), var(--shadow); }
+    70%  { box-shadow:0 0 0 14px rgba(99,102,241,0), var(--shadow); }
+    100% { box-shadow:0 0 0 0 rgba(99,102,241,0),   var(--shadow); }
+  }
+  .notepad.intro-pulse{animation:notepadPulse 1.6s ease-out 3}
+  .notepad-tab.intro-pulse{animation:notepadPulse 1.6s ease-out 3}
+
+  /* First-visit hint bubble */
+  .notepad-hint{
+    position:fixed;top:150px;right:340px;z-index:46;max-width:240px;
+    background:#1e293b;color:#fff;font-size:12px;line-height:1.45;
+    padding:10px 12px 10px 14px;border-radius:10px;
+    box-shadow:0 8px 20px rgba(15,23,42,.30);
+    display:none;
+  }
+  .notepad-hint.visible{display:block}
+  .notepad-hint::after{
+    content:"";position:absolute;top:18px;right:-6px;width:12px;height:12px;
+    background:#1e293b;transform:rotate(45deg);
+  }
+  .notepad-hint .x{position:absolute;top:4px;right:6px;background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:13px}
+
+  /* Notes download dropdown (sits in topbar) */
+  .notes-menu{position:relative;display:inline-block}
+  .notes-menu .menu{
+    position:absolute;top:calc(100% + 6px);right:0;min-width:180px;
+    background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);
+    padding:4px;display:none;z-index:60;
+  }
+  .notes-menu.open .menu{display:block}
+  .notes-menu .menu button{
+    display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:transparent;
+    border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--ink);font-weight:500;
+  }
+  .notes-menu .menu button:hover{background:var(--chip);color:var(--indigo-deep)}
+  .notes-menu .menu .sep{height:1px;background:var(--border);margin:4px 6px}
+  .notes-menu .menu .danger{color:var(--red)}
+  .notes-menu .btn:disabled{opacity:.5;cursor:not-allowed}
+  .notes-menu .btn .badge{display:inline-block;background:var(--amber);color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:4px;font-weight:700}
+
+  /* BACK-TO-TOP */
+  .back-to-top{
+    position:fixed;bottom:24px;right:24px;width:42px;height:42px;border-radius:50%;
+    background:var(--indigo);color:#fff;border:none;cursor:pointer;font-size:18px;font-weight:700;
+    box-shadow:0 4px 14px rgba(99,102,241,.35);opacity:0;pointer-events:none;
+    transition:opacity .2s, transform .2s;z-index:50;display:grid;place-items:center;
+  }
+  .back-to-top.visible{opacity:1;pointer-events:auto}
+  .back-to-top:hover{background:var(--indigo-deep);transform:translateY(-2px)}
+
+  /* PRINT — strip toolbars/buttons, drop shadows, keep content & charts crisp */
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    body { background:#fff; font-size:12px; }
+    .shell { max-width:none; padding:0; }
+    .topbar { position:static; box-shadow:none; backdrop-filter:none; background:#fff; }
+    .topbar .btn, .topbar .notes-menu, .navchips, .tabs, .tx-tools, .cf-trend-toolbar,
+    .tx-pager, .back-to-top, .notepad, .notepad-tab, .more-toggle, .teaser-dots,
+    .an-toolbar, .an-list, .an-foot { display:none !important; }
+    .an-grid { grid-template-columns: 1fr !important; }
+    .summary.clamped .more { display:block !important; }
+    .summary .teaser-dots { display:none !important; }
+    .panel { box-shadow:none; border:1px solid #d1d5db; break-inside:avoid; page-break-inside:avoid; margin-bottom:10px; padding:12px 14px; }
+    .kpi { box-shadow:none; break-inside:avoid; }
+    .tab-body { display:block !important; }   /* show every tab in print */
+    .tab-body + .tab-body { margin-top:14px; border-top:1px dashed #d1d5db; padding-top:10px; }
+    .chart-wrap { height:200px; page-break-inside:avoid; }
+    .chart-wrap.sm { height:170px; }
+    table.data { font-size:11px; }
+    table.data th { background:#f3f4f6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .check, .loan-card, .verdict-pill, .kpi, .summary,
+    .tag, .heat-row .cells div { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    a[href]::after { content:""; }
+  }
+
+  /* ADMIN EDIT MODE */
+  body[data-edit-mode="on"] #adminToggleBtn { background:#fef3c7; border-color:#f59e0b; color:#92400e }
+  body[data-edit-mode="on"] table.data#txTable .cat-l2-cell { background:#fffbeb; cursor:pointer; outline:1px dashed #f59e0b; outline-offset:-2px }
+  body[data-edit-mode="on"] table.data#txTable .cat-l2-cell:hover { background:#fef3c7 }
+  body[data-edit-mode="on"] table.data#txTable tr.row-edited .cat-l2-cell,
+  body[data-edit-mode="on"] table.data#txTable tr.row-edited .cat-l1-cell { background:#d1fae5; outline-color:#10b981 }
+  .cat-l2-cell select.l2-picker { font:inherit; padding:2px 6px; border-radius:6px; border:1px solid var(--indigo); background:#fff; color:var(--ink); max-width:170px }
+  .admin-toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:10px; font-size:13px; font-weight:600; z-index:9999; box-shadow:var(--shadow); opacity:0; transition:opacity .25s }
+  .admin-toast.show { opacity:1 }
+  .admin-toast.err { background:#991b1b }
+  .admin-toast.ok { background:#065f46 }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  {# =================================================================== #}
+  {# HEADER                                                                #}
+  {# =================================================================== #}
+  <div class="topbar">
+    <div class="brand"><div class="logo">K</div>Banking Risk Report</div>
+    {% if bank_v2 and bank_v2.header %}
+    <div class="cust">
+      <div><b>Customer:</b> {{ bank_v2.header.customer_id|mask_id }}{% if bank_v2.header.name %} · {{ bank_v2.header.name }}{% endif %}</div>
+      <div><b>Period:</b> {{ bank_v2.header.period }}</div>
+      <div><b>Txns:</b> {{ bank_v2.header.txn_count }}</div>
+    </div>
+    {% endif %}
+    <div class="spacer"></div>
+    <button class="btn" id="adminToggleBtn" onclick="toggleAdminMode()" title="Admin: edit transaction categories">Admin</button>
+    <button class="btn" id="adminSaveBtn" onclick="saveAdminEdits()" style="display:none;background:var(--indigo);color:#fff;border-color:var(--indigo)" title="Save edits and exit edit mode">Save &amp; Exit <span id="adminEditCount" style="opacity:.8;font-weight:500">0</span></button>
+    <div class="notes-menu" id="exportMenu">
+      <button class="btn" onclick="toggleExportMenu(event)" title="Export this report">Export ⤓</button>
+      <div class="menu" role="menu">
+        <button onclick="closeExportMenu(); window.print();">Download as PDF</button>
+        <button onclick="closeExportMenu(); exportRiskTrailCSV();">Download as CSV</button>
+        <button onclick="closeExportMenu(); downloadRiskTrail();">Download as JSON</button>
+      </div>
+    </div>
+    <div class="notes-menu" id="notesMenu">
+      <button class="btn" id="notesDownloadBtn" onclick="toggleNotesMenu(event)" disabled title="Download analyst review notes">E-Mail ⤓<span class="badge" id="notesCount" style="display:none">0</span></button>
+      <div class="menu" role="menu">
+        <button onclick="downloadNotes('md')">Download as Markdown (.md)</button>
+        <button onclick="downloadNotes('json')">Download as JSON (.json)</button>
+        <div class="sep"></div>
+        <button class="danger" onclick="clearAllNotes()">Clear all notes</button>
+      </div>
+    </div>
+  </div>
+
+  {# =================================================================== #}
+  {# NAV CHIPS                                                             #}
+  {# =================================================================== #}
+  <div class="navchips">
+    <a href="#kpis">Overview</a>
+    {% if bank_v2 and bank_v2.checks %}<a href="#checks">Risk Checks</a>{% endif %}
+    <a href="#summary">Summary</a>
+    {% if bank_v2 and bank_v2.cashflow %}<a href="#cashflow">Cashflow</a>{% endif %}
+    {% if bank_v2 and bank_v2.analysis %}<a href="#analysis">Analysis</a>{% endif %}
+    {% if bank_v2 and (bank_v2.recurring_debits or bank_v2.recurring_credits) %}<a href="#recurring">Recurring</a>{% endif %}
+    {% if bank_v2 and (bank_v2.loans or bank_v2.loan_disbursals) %}<a href="#loans">Loan Activity</a>{% endif %}
+    {% if bank_v2 and (bank_v2.credit_remitters or bank_v2.debit_beneficiaries) %}<a href="#remitters">Top Remitters</a>{% endif %}
+    {% if bank_v2 and bank_v2.transactions %}<a href="#txns">Transactions</a>{% endif %}
+  </div>
+
+  {# =================================================================== #}
+  {# KPI STRIP                                                             #}
+  {# =================================================================== #}
+  {% if bank_v2 and bank_v2.kpis %}
+  {% set k = bank_v2.kpis %}
+  <div class="kpis" id="kpis">
+    {% if k.salary %}
+    <div class="kpi {{ k.salary.rag }}">
+      <div class="label">Avg Salary</div>
+      <div class="value">₹ {{ k.salary.avg_amount|inr }}</div>
+      <div class="sub">{{ k.salary.frequency }} of {{ k.salary.months_total }} months credited</div>
+      <div class="sal-strip">
+        {% for d in k.salary.strip %}
+        <div class="sal-dot {{ d.status }}" title="{{ d.title }}">{{ d.label }}</div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <div class="kpi"><div class="label">Avg Salary</div><div class="value">—</div><div class="sub">Not detected</div></div>
+    {% endif %}
+
+    {% if k.balance %}
+    <div class="kpi">
+      <div class="label">Avg Closing Balance</div>
+      <div class="value">₹ {{ k.balance.avg|inr }}</div>
+      <div class="sub">Min ₹ {{ k.balance.min|inr }} · Max ₹ {{ k.balance.max|inr }}</div>
+      <div class="spark"><canvas id="sparkBal"></canvas></div>
+    </div>
+    {% else %}
+    <div class="kpi"><div class="label">Avg Closing Balance</div><div class="value">—</div><div class="sub">Balance series unavailable</div></div>
+    {% endif %}
+
+    {% if k.net_cashflow %}
+    <div class="kpi {{ k.net_cashflow.rag }}">
+      <div class="label">Net Cashflow ({{ k.net_cashflow.labels|length }}M)</div>
+      <div class="value">{% if k.net_cashflow.total < 0 %}− {% endif %}₹ {{ k.net_cashflow.total|abs|inr }}</div>
+      <div class="sub">{% if k.net_cashflow.negative_months %}Outflow &gt; Inflow in {{ k.net_cashflow.negative_months|join(', ') }}{% else %}Net positive{% endif %}</div>
+      <div class="spark"><canvas id="sparkNet"></canvas></div>
+    </div>
+    {% else %}
+    <div class="kpi"><div class="label">Net Cashflow</div><div class="value">—</div><div class="sub">No cashflow data</div></div>
+    {% endif %}
+
+    {% if k.emi %}
+    <div class="kpi {{ k.emi.rag }}">
+      <div class="label">Total EMI / mo</div>
+      <div class="value">₹ {{ k.emi.total|inr }}</div>
+      <div class="sub">{% if k.emi.pct_salary is not none %}{{ k.emi.pct_salary }}% of salary · {% endif %}{{ k.emi.count }} active loan{% if k.emi.count != 1 %}s{% endif %}</div>
+    </div>
+    {% else %}
+    <div class="kpi green"><div class="label">Total EMI / mo</div><div class="value">₹ 0</div><div class="sub">No EMIs detected</div></div>
+    {% endif %}
+
+    {% if k.stress %}
+    <div class="kpi {{ k.stress.rag }}">
+      <div class="label">Stress Score</div>
+      <div class="value">{{ k.stress.score }} <span style="font-size:12px;color:var(--{{ k.stress.rag }});font-weight:600">{{ k.stress.label }}</span></div>
+      <div class="stress-gauge"><div class="bar"><div class="fill" style="width:{{ k.stress.score }}%"></div></div></div>
+      <div class="sub">{% if k.stress.drivers %}{{ k.stress.drivers|join(' · ') }}{% else %}No stress drivers{% endif %}</div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# RISK / FCU / FRAUD CHECKS                                             #}
+  {# =================================================================== #}
+  {% if bank_v2 and bank_v2.checks %}
+  <div class="panel" id="checks">
+    <h2>Risk · FCU · Fraud Indicators <span class="count">{{ bank_v2.checks.summary }}</span></h2>
+    <div class="checks">
+      <div class="check-col">
+        <h3>Risk</h3>
+        {% for c in bank_v2.checks.risk %}
+        <div class="check {{ c.color }}"><div class="ico">{% if c.color in ('green', 'neutral') %}✓{% else %}!{% endif %}</div><div class="lbl">{{ c.label }}{% if c.detail %}<div class="det">{{ c.detail }}</div>{% endif %}</div></div>
+        {% endfor %}
+      </div>
+      <div class="check-col">
+        <h3>FCU</h3>
+        {% for c in bank_v2.checks.fcu %}
+        <div class="check {{ c.color }}"><div class="ico">{% if c.color in ('green', 'neutral') %}✓{% else %}!{% endif %}</div><div class="lbl">{{ c.label }}{% if c.detail %}<div class="det">{{ c.detail }}</div>{% endif %}</div></div>
+        {% endfor %}
+      </div>
+      <div class="check-col">
+        <h3>Fraud</h3>
+        {% for c in bank_v2.checks.fraud %}
+        <div class="check {{ c.color }}"><div class="ico">{% if c.color in ('green', 'neutral') %}✓{% else %}!{% endif %}</div><div class="lbl">{{ c.label }}{% if c.detail %}<div class="det">{{ c.detail }}</div>{% endif %}</div></div>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# BANKING SUMMARY  (LLM-generated; always present in production)        #}
+  {# =================================================================== #}
+  <div class="panel" id="summary">
+    <h2>Banking Summary <span class="count">LLM-generated narrative</span></h2>
+    <div class="summary {% if bank_v2.summary.has_more %}clamped{% endif %}" id="sum">
+      {{ bank_v2.summary.teaser }}
+      {% if bank_v2.summary.has_more %}
+      <span class="teaser-dots">… <span class="more-toggle" onclick="toggleSummary()">read more</span></span>
+      <div class="more">
+        {{ bank_v2.summary.rest }}
+        <span class="more-toggle" onclick="toggleSummary()"> show less</span>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# =================================================================== #}
+  {# CASHFLOW + BALANCE                                                    #}
+  {# =================================================================== #}
+  {% if bank_v2 and bank_v2.cashflow %}
+  <div class="panel" id="cashflow">
+    <h2>Monthly Cashflow &amp; Running Balance</h2>
+    <div class="cf-trend-toolbar" style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:6px 0 10px;font-size:12px;color:var(--muted)">
+      <span style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;color:#475569">Trends:</span>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="0" checked> <span style="color:#10b981">●</span> Credits</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="1" checked> <span style="color:#ef4444">●</span> Debits</label>
+      {% if bank_v2.cashflow.balances and bank_v2.cashflow.balances|select|list %}
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="2" checked> <span style="color:#6366f1">●</span> Closing Balance</label>
+      {% endif %}
+      <span style="opacity:.4">|</span>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="mc"> <span style="color:#059669">▲</span> Max Credit</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="md"> <span style="color:#b91c1c">▲</span> Max Debit</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="medc"> <span style="color:#34d399">◆</span> Median Credit</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="medd"> <span style="color:#fb7185">◆</span> Median Debit</label>
+    </div>
+    <div class="chart-wrap"><canvas id="cashChart"></canvas></div>
+    {% if bank_v2.cashflow.spikes %}
+    <div class="spike-note">Outflow spikes (&gt;1.5× median) in {{ bank_v2.cashflow.spikes|join(', ') }}</div>
+    {% endif %}
+
+    <div style="margin-top:18px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start">
+      {% if bank_v2.heatmap %}
+      <div style="overflow-x:auto;min-width:0">
+        <h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Debit Velocity Heatmap <span class="freq">({{ bank_v2.heatmap.window_label }} · day-of-month)</span></h3>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">{{ bank_v2.heatmap.total_debits }} debits across {{ bank_v2.heatmap.month_labels|length }} month{{ 's' if bank_v2.heatmap.month_labels|length != 1 else '' }}</div>
+        <div class="heat-wrap" id="heatmap"></div>
+        <div class="heat-axis" id="heatmap-axis"></div>
+        <div class="heat-legend" style="margin-top:8px">
+          Low <span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#c7d2fe;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#818cf8;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#6366f1;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#4338ca;margin:0 2px;border-radius:2px"></span>
+          High
+        </div>
+      </div>
+      {% endif %}
+      {% if bank_v2.category_mix %}
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+          <h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin:0">Category Spend Mix</h3>
+          {% if bank_v2.category_mix.l2 %}
+          <div class="an-pillgrp" id="catMixGrain" style="font-size:11px">
+            <span class="an-pill active" data-grain="l1">L1</span>
+            <span class="an-pill" data-grain="l2">L2</span>
+          </div>
+          {% endif %}
+        </div>
+        <div class="chart-wrap sm"><canvas id="catMix"></canvas></div>
+        <div id="catMixTail" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;min-height:14px"></div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# ANALYSIS                                                              #}
+  {# =================================================================== #}
+  {% if bank_v2 and bank_v2.analysis %}
+  <div class="panel" id="analysis">
+    <h2>Analysis <span class="freq" style="font-size:11px;color:var(--muted);font-weight:500;margin-left:6px">Pick variables to plot · scale auto-fits</span></h2>
+    <div class="an-toolbar">
+      <span style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;color:#475569">Grain:</span>
+      <div class="an-pillgrp" id="anGrain">
+        <span class="an-pill active" data-grain="monthly">Monthly</span>
+        <span class="an-pill" data-grain="weekly">Weekly</span>
+        <span class="an-pill" data-grain="daily">Daily</span>
+      </div>
+      <span style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;color:#475569;margin-left:8px">View:</span>
+      <div class="an-pillgrp" id="anMode">
+        <span class="an-pill active" data-mode="mixed">Mixed</span>
+        <span class="an-pill" data-mode="amt">Amounts</span>
+        <span class="an-pill" data-mode="count">Counts</span>
+      </div>
+    </div>
+    <div class="an-grid">
+      <div>
+        <div class="an-list" id="anList">
+          {% for grp in bank_v2.analysis.groups %}
+          <div class="an-grp" data-grp="{{ grp }}">
+            <div class="an-grp-head">{{ grp }} <span class="chev">▾</span></div>
+            <div class="an-rows">
+              {% for v in bank_v2.analysis.vars if v.group == grp %}
+              <div class="an-row">
+                <span class="nm" title="{{ v.label }}">{{ v.label }}</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="{{ v.id }}" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="{{ v.id }}" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <div class="an-foot">
+          <a id="anReset">Reset</a>
+          <a id="anClear">Clear</a>
+        </div>
+      </div>
+      <div>
+        <div class="chart-wrap"><canvas id="anChart"></canvas></div>
+        <div class="an-empty" id="anEmpty" style="display:none">Select one or more variables on the left to plot.</div>
+      </div>
+    </div>
+  </div>
+  <script id="analysis-data" type="application/json">{{ bank_v2.analysis|tojson }}</script>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# RECURRING                                                             #}
+  {# =================================================================== #}
+  {% if bank_v2 and (bank_v2.recurring_debits or bank_v2.recurring_credits) %}
+  <div class="panel" id="recurring">
+    <h2>Recurring Transactions</h2>
+    <div class="tabs">
+      {% if bank_v2.recurring_debits %}<button class="active" onclick="tab(event,'rec-dr')">Debits ({{ bank_v2.recurring_debits|length }})</button>{% endif %}
+      {% if bank_v2.recurring_credits %}<button {% if not bank_v2.recurring_debits %}class="active"{% endif %} onclick="tab(event,'rec-cr')">Credits ({{ bank_v2.recurring_credits|length }})</button>{% endif %}
+    </div>
+    {% if bank_v2.recurring_debits %}
+    <div class="tab-body active" id="rec-dr">
+      <table class="data">
+        <thead><tr><th>Merchant / Party</th><th>Category</th><th>Frequency</th><th>Last Seen</th><th>Next Expected</th><th class="num">Avg Amount</th></tr></thead>
+        <tbody>
+          {% for r in bank_v2.recurring_debits %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td><span class="tag {{ r.category_class }}">{{ r.category }}</span></td>
+            <td>{{ r.frequency }}</td>
+            <td>{{ r.last_seen or '—' }}</td>
+            <td>{{ r.next_expected or '—' }}</td>
+            <td class="num dr">{{ r.avg_amount|inr }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+    {% if bank_v2.recurring_credits %}
+    <div class="tab-body {% if not bank_v2.recurring_debits %}active{% endif %}" id="rec-cr">
+      <table class="data">
+        <thead><tr><th>Source</th><th>Category</th><th>Frequency</th><th>Last Seen</th><th>Next Expected</th><th class="num">Avg Amount</th></tr></thead>
+        <tbody>
+          {% for r in bank_v2.recurring_credits %}
+          <tr>
+            <td>{{ r.name }}</td>
+            <td><span class="tag {{ r.category_class }}">{{ r.category }}</span></td>
+            <td>{{ r.frequency }}</td>
+            <td>{{ r.last_seen or '—' }}</td>
+            <td>{{ r.next_expected or '—' }}</td>
+            <td class="num cr">{{ r.avg_amount|inr }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# LOANS                                                                 #}
+  {# =================================================================== #}
+  {% if bank_v2 and (bank_v2.loans or bank_v2.loan_disbursals) %}
+  <div class="panel" id="loans">
+    <h2>Loan Activity <span class="count">Inferred from transactions</span></h2>
+    <div class="tabs">
+      {% if bank_v2.loans %}<button class="active" onclick="tab(event,'ln-dr')">Loan EMIs ({{ bank_v2.loans|length }})</button>{% endif %}
+      {% if bank_v2.loan_disbursals %}<button {% if not bank_v2.loans %}class="active"{% endif %} onclick="tab(event,'ln-cr')">Disbursal Events ({{ bank_v2.loan_disbursals|length }})</button>{% endif %}
+    </div>
+    {% if bank_v2.loans %}
+    <div class="tab-body active" id="ln-dr">
+      <div class="loan-grid">
+        {% for ln in bank_v2.loans %}
+        <div class="loan-card">
+          <div class="head"><b>{{ ln.name }}</b><div class="amt">₹ {{ ln.amount|inr }}</div></div>
+          <div class="row"><span>EMI Day</span><b>{{ ln.emi_day }}</b></div>
+          <div class="row"><span>Months paid</span><b>{{ ln.months_paid }} / {{ ln.months_total }}</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--{{ ln.bounces_color }})">{{ ln.bounces }}</b></div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+    {% if bank_v2.loan_disbursals %}
+    <div class="tab-body {% if not bank_v2.loans %}active{% endif %}" id="ln-cr">
+      <div class="loan-grid">
+        {% for d in bank_v2.loan_disbursals %}
+        <div class="loan-card cr">
+          <div class="head"><b>{{ d.lender }}{% if d.count and d.count > 1 %} <span style="font-size:10px;color:var(--muted);font-weight:500">· {{ d.count }} events</span>{% endif %}</b><div class="amt">+ ₹ {{ d.amount|inr }}</div></div>
+          {% if d.month_label %}<div class="row"><span>Month{% if d.count and d.count > 1 %}s{% endif %}</span><b>{{ d.month_label }}</b></div>{% endif %}
+          {% if d.details %}<div class="row" style="display:block"><span>Detail</span><ul style="font-size:11px;color:var(--ink);margin:4px 0 0 0;padding-left:16px">{% for line in d.details %}<li style="margin-bottom:2px">{{ line }}</li>{% endfor %}</ul></div>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# REMITTERS                                                             #}
+  {# =================================================================== #}
+  {% if bank_v2 and (bank_v2.credit_remitters or bank_v2.debit_beneficiaries) %}
+  <div class="panel" id="remitters">
+    <h2>Top Remitters</h2>
+    <div class="tabs">
+      {% if bank_v2.credit_remitters %}<button class="active" onclick="tab(event,'rem-cr')">Credit Sources ({{ bank_v2.credit_remitters.rows|length }})</button>{% endif %}
+      {% if bank_v2.debit_beneficiaries %}<button {% if not bank_v2.credit_remitters %}class="active"{% endif %} onclick="tab(event,'rem-dr')">Debit Beneficiaries ({{ bank_v2.debit_beneficiaries.rows|length }})</button>{% endif %}
+    </div>
+    {% if bank_v2.credit_remitters %}
+    <div class="tab-body active" id="rem-cr">
+      <div class="remit-grid">
+        <div class="chart-wrap sm"><canvas id="remitCrChart"></canvas></div>
+        <ul class="remit-list">
+          {% for it in bank_v2.credit_remitters.rows %}
+          <li><div class="rank">{{ it.rank }}</div><div><div class="name">{{ it.name }}</div><div class="meta">{{ it.meta }}</div></div><div class="amt">₹ {{ it.amount|inr }}</div></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+    {% if bank_v2.debit_beneficiaries %}
+    <div class="tab-body {% if not bank_v2.credit_remitters %}active{% endif %}" id="rem-dr">
+      <div class="remit-grid">
+        <div class="chart-wrap sm"><canvas id="remitDrChart"></canvas></div>
+        <ul class="remit-list">
+          {% for it in bank_v2.debit_beneficiaries.rows %}
+          <li><div class="rank">{{ it.rank }}</div><div><div class="name">{{ it.name }}</div><div class="meta">{{ it.meta }}</div></div><div class="amt">₹ {{ it.amount|inr }}</div></li>
+          {% endfor %}
+        </ul>
+      </div>
+    </div>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {# =================================================================== #}
+  {# TRANSACTIONS                                                          #}
+  {# =================================================================== #}
+  {% if bank_v2 and bank_v2.transactions %}
+  <div class="panel" id="txns">
+    <h2>All Transactions <span class="count">{{ bank_v2.transactions.total }} total · showing {{ bank_v2.transactions.showing }}</span></h2>
+    <div class="tx-tools">
+      <input type="text" id="txSearch" placeholder="Search merchant, narration, amount…" oninput="filterTx()" />
+      <span class="chip on" data-cls="all" onclick="togClass(this)">All</span>
+      <span class="chip" data-cls="salary" onclick="togClass(this)">Salary</span>
+      <span class="chip" data-cls="emi" onclick="togClass(this)">EMI</span>
+      <span class="chip" data-cls="upi" onclick="togClass(this)">UPI</span>
+      <span class="chip" data-cls="fraud" onclick="togClass(this)">Gaming/Fraud</span>
+      <span class="chip" data-cls="inv" onclick="togClass(this)">Investment</span>
+      <span class="chip" data-cls="other" onclick="togClass(this)">Other</span>
+    </div>
+    <table class="data" id="txTable" data-page-size="20">
+      <thead><tr>
+        <th class="sortable" onclick="sortTx('date')" style="cursor:pointer;user-select:none">Date <span class="sort-ind" data-key="date"></span></th>
+        <th>Narration</th>
+        <th>Mode</th>
+        <th>Category</th>
+        <th>Sub-category</th>
+        <th class="num sortable" onclick="sortTx('debit')" style="cursor:pointer;user-select:none">Debit <span class="sort-ind" data-key="debit"></span></th>
+        <th class="num sortable" onclick="sortTx('credit')" style="cursor:pointer;user-select:none">Credit <span class="sort-ind" data-key="credit"></span></th>
+        <th class="num sortable" onclick="sortTx('balance')" style="cursor:pointer;user-select:none">Balance <span class="sort-ind" data-key="balance"></span></th>
+      </tr></thead>
+      <tbody id="txBody">
+        {% for t in bank_v2.transactions.rows %}
+        <tr data-cls="{{ t.cls }}" data-text="{{ (t.narration ~ ' ' ~ t.category ~ ' ' ~ t.category_l2)|lower }}"
+            data-date="{{ t.date_raw }}"
+            data-debit="{{ t.debit if t.debit is not none else 0 }}"
+            data-credit="{{ t.credit if t.credit is not none else 0 }}"
+            data-balance="{{ t.balance if t.balance is not none else 0 }}"
+            data-narr-full="{{ t.narration_full }}"
+            data-narr-norm="{{ t.narration_full|lower|trim }}">
+          <td>{{ t.date }}</td>
+          <td>{{ t.narration }}{% if t.flag == 'bounce' %} <span class="tag fraud">BOUNCE</span>{% endif %}</td>
+          <td><span class="tag {{ t.cls }}">{{ t.cls|upper }}</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">{{ t.category }}</span></td>
+          <td class="cat-l2-cell" data-l2="{{ t.category_l2 }}"><span class="tag cat">{{ t.category_l2 }}</span></td>
+          <td class="num dr">{% if t.debit is not none %}{{ t.debit|inr }}{% endif %}</td>
+          <td class="num cr">{% if t.credit is not none %}{{ t.credit|inr }}{% endif %}</td>
+          <td class="num">{% if t.balance is not none %}{{ t.balance|inr }}{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <div class="tx-pager" id="txPager" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;font-size:12px;color:var(--muted)">
+      <div id="txPagerInfo"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn" id="txPagerPrev" onclick="pageTx(-1)" style="padding:4px 10px">‹ Prev</button>
+        <span id="txPagerPages" style="display:inline-flex;gap:4px"></span>
+        <button class="btn" id="txPagerNext" onclick="pageTx(1)" style="padding:4px 10px">Next ›</button>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="foot">Generated {{ bank_v2.header.period if bank_v2 and bank_v2.header else '' }} · BANK_ANALYSER v2</div>
+</div>
+
+<div class="notepad" id="notepad">
+  <div class="head">
+    <span class="icon">📝</span>
+    <span class="lbl">Review Notes</span>
+    <span class="ctx" id="notepadCtx" title="Section currently in view">—</span>
+    <button class="x" onclick="hideNotepad()" title="Hide (your notes stay saved)" aria-label="Hide notepad">×</button>
+  </div>
+  <textarea id="notepadText" placeholder="Jot anything here while you scroll. Auto-saves locally; download as .md or .json from the Notes ⤓ button up top."></textarea>
+  <div class="foot">
+    <button class="insert" onclick="insertSectionTag()" title="Insert the current section as a heading">+ insert section heading</button>
+    <span class="ts" id="notepadTs"></span>
+  </div>
+</div>
+<button class="notepad-tab" id="notepadTab" onclick="showNotepad()" title="Open review notes" aria-label="Open notepad">📝 Add review notes <span class="dot" id="notepadTabDot" style="display:none"></span></button>
+<div class="notepad-hint" id="notepadHint" role="status">
+  <button class="x" onclick="dismissNotepadHint()" aria-label="Dismiss hint">×</button>
+  Jot review notes here while you scroll. Auto-saves to this browser; export from <b>E-Mail ⤓</b>.
+</div>
+
+<button class="back-to-top" id="backToTop" onclick="scrollToTop()" title="Back to top" aria-label="Back to top">↑</button>
+
+{# Risk-trail payload — embedded once for client-side JSON export. Excludes the
+   raw transactions table to keep the file analyst-sized. #}
+<script id="risk-trail-data" type="application/json">
+{{ {
+  "customer_id": (bank_v2.header.customer_id if bank_v2 and bank_v2.header else None),
+  "period": (bank_v2.header.period if bank_v2 and bank_v2.header else None),
+  "verdict": bank_v2.verdict if bank_v2 else None,
+  "kpis": bank_v2.kpis if bank_v2 else None,
+  "checks": bank_v2.checks if bank_v2 else None,
+  "cashflow": bank_v2.cashflow if bank_v2 else None,
+  "recurring_debits": bank_v2.recurring_debits if bank_v2 else None,
+  "recurring_credits": bank_v2.recurring_credits if bank_v2 else None,
+  "loans": bank_v2.loans if bank_v2 else None,
+  "loan_disbursals": bank_v2.loan_disbursals if bank_v2 else None,
+  "credit_remitters": bank_v2.credit_remitters if bank_v2 else None,
+  "debit_beneficiaries": bank_v2.debit_beneficiaries if bank_v2 else None,
+  "summary": bank_v2.summary if bank_v2 else None
+}|tojson }}
+</script>
+
+<script>
+  // ---- TABS / SUMMARY TOGGLE ------------------------------------------------
+  function tab(e, id){
+    const wrap = e.target.closest('.panel');
+    wrap.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    wrap.querySelectorAll('.tab-body').forEach(b=>b.classList.remove('active'));
+    const target = wrap.querySelector('#'+id);
+    if(target) target.classList.add('active');
+  }
+  function toggleSummary(){ const s=document.getElementById('sum'); if(s) s.classList.toggle('clamped'); }
+
+  // ---- BACK-TO-TOP ----------------------------------------------------------
+  function scrollToTop(){ window.scrollTo({top:0, behavior:'smooth'}); }
+  (function(){
+    const btn = document.getElementById('backToTop');
+    if(!btn) return;
+    const onScroll = () => btn.classList.toggle('visible', window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, {passive:true});
+    onScroll();
+  })();
+
+  // ---- ANALYST NOTEPAD (single floating panel, follows scroll) -------------
+  const NOTE_SECTIONS = {
+    kpis:      'Overview',
+    checks:    'Risk · FCU · Fraud',
+    summary:   'Banking Summary',
+    cashflow:  'Cashflow & Balance',
+    recurring: 'Recurring Transactions',
+    loans:     'Loan Activity',
+    remitters: 'Top Remitters',
+    txns:      'Transactions'
+  };
+  const NOTES_CUSTOMER = {{ (bank_v2.header.customer_id if bank_v2 and bank_v2.header else 'unknown')|tojson }};
+  const NOTES_KEY = 'bank_v2_notepad::' + NOTES_CUSTOMER;
+  const NOTES_VIS_KEY = 'bank_v2_notepad_visible::' + NOTES_CUSTOMER;
+  const NOTES_INTRO_KEY = 'bank_v2_notepad_intro_seen';
+
+  function loadNote(){
+    try { return JSON.parse(localStorage.getItem(NOTES_KEY) || 'null'); } catch(e){ return null; }
+  }
+  function saveNote(text){
+    try {
+      if (!text || !text.trim()) localStorage.removeItem(NOTES_KEY);
+      else localStorage.setItem(NOTES_KEY, JSON.stringify({
+        customer_id: NOTES_CUSTOMER,
+        note: text,
+        updated_at: new Date().toISOString()
+      }));
+    } catch(e){ console.warn('localStorage write failed', e); }
+    updateNotesUI();
+  }
+
+  // Topmost section currently in view, used as breadcrumb context only.
+  function currentSectionId(){
+    const ids = Object.keys(NOTE_SECTIONS);
+    let active = ids[0];
+    const threshold = 140;
+    for (const id of ids){
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const top = el.getBoundingClientRect().top;
+      if (top <= threshold) active = id;
+    }
+    return active;
+  }
+
+  function showNotepad(){
+    const pad = document.getElementById('notepad');
+    const tab = document.getElementById('notepadTab');
+    if (pad) pad.classList.remove('hidden');
+    if (tab) tab.classList.remove('visible');
+    try { localStorage.setItem(NOTES_VIS_KEY, '1'); } catch(e){}
+    setTimeout(() => { const ta = document.getElementById('notepadText'); if (ta) ta.focus(); }, 250);
+  }
+  function hideNotepad(){
+    const pad = document.getElementById('notepad');
+    const tab = document.getElementById('notepadTab');
+    if (pad) pad.classList.add('hidden');
+    if (tab) tab.classList.add('visible');
+    try { localStorage.setItem(NOTES_VIS_KEY, '0'); } catch(e){}
+  }
+
+  function insertSectionTag(){
+    const ta = document.getElementById('notepadText');
+    if (!ta) return;
+    const id = currentSectionId();
+    const heading = '\n\n## ' + (NOTE_SECTIONS[id] || id) + '\n';
+    const before = ta.value.slice(0, ta.selectionStart);
+    const after = ta.value.slice(ta.selectionEnd);
+    ta.value = (before.trimEnd() + heading + after).replace(/^\n+/, '');
+    ta.focus();
+    onNoteInput();
+  }
+
+  let noteSaveTimer = null;
+  function onNoteInput(){
+    const ta = document.getElementById('notepadText');
+    const ts = document.getElementById('notepadTs');
+    if (!ta) return;
+    clearTimeout(noteSaveTimer);
+    noteSaveTimer = setTimeout(() => {
+      saveNote(ta.value);
+      if (ts) ts.textContent = ta.value.trim() ? 'Saved just now' : '';
+    }, 350);
+  }
+
+  function clearAllNotes(){
+    const data = loadNote();
+    if (!data) return;
+    if (!confirm('Clear the review notes for this customer? This cannot be undone.')) return;
+    saveNote('');
+    const ta = document.getElementById('notepadText');
+    if (ta) ta.value = '';
+    const ts = document.getElementById('notepadTs');
+    if (ts) ts.textContent = '';
+    closeNotesMenu();
+  }
+
+  function downloadNotes(format){
+    const data = loadNote();
+    if (!data || !data.note || !data.note.trim()){ alert('No notes to download.'); return; }
+    const stamp = new Date().toISOString().slice(0,10);
+    let blob, filename;
+    if (format === 'json'){
+      blob = new Blob([JSON.stringify({...data, exported_at: new Date().toISOString()}, null, 2)], {type:'application/json'});
+      filename = `notes_${NOTES_CUSTOMER}_${stamp}.json`;
+    } else {
+      const md =
+        `# Review Notes — Customer ${NOTES_CUSTOMER}\n\n` +
+        `_Exported ${new Date().toLocaleString()} · last saved ${new Date(data.updated_at).toLocaleString()}_\n\n` +
+        data.note.trim() + '\n';
+      blob = new Blob([md], {type:'text/markdown'});
+      filename = `notes_${NOTES_CUSTOMER}_${stamp}.md`;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    closeNotesMenu();
+  }
+
+  function updateNotesUI(){
+    const data = loadNote();
+    const has = !!(data && data.note && data.note.trim());
+    const btn = document.getElementById('notesDownloadBtn');
+    const badge = document.getElementById('notesCount');
+    const tabDot = document.getElementById('notepadTabDot');
+    if (btn) btn.disabled = !has;
+    if (badge){
+      badge.textContent = has ? '●' : '';
+      badge.style.display = has ? 'inline-block' : 'none';
+    }
+    if (tabDot) tabDot.style.display = has ? 'inline-block' : 'none';
+  }
+
+  function toggleNotesMenu(ev){
+    if (ev) ev.stopPropagation();
+    const m = document.getElementById('notesMenu');
+    if (!m || m.querySelector('button.btn').disabled) return;
+    m.classList.toggle('open');
+  }
+  function closeNotesMenu(){
+    const m = document.getElementById('notesMenu');
+    if (m) m.classList.remove('open');
+  }
+  function toggleExportMenu(ev){
+    if (ev) ev.stopPropagation();
+    const m = document.getElementById('exportMenu');
+    if (m) m.classList.toggle('open');
+  }
+  function closeExportMenu(){
+    const m = document.getElementById('exportMenu');
+    if (m) m.classList.remove('open');
+  }
+  document.addEventListener('click', (e) => {
+    const m = document.getElementById('notesMenu');
+    if (m && !m.contains(e.target)) closeNotesMenu();
+    const x = document.getElementById('exportMenu');
+    if (x && !x.contains(e.target)) closeExportMenu();
+  });
+
+  function refreshNotepadCtx(){
+    const ctx = document.getElementById('notepadCtx');
+    if (!ctx) return;
+    const id = currentSectionId();
+    ctx.textContent = NOTE_SECTIONS[id] || '—';
+  }
+
+  function dismissNotepadHint(){
+    const h = document.getElementById('notepadHint');
+    if (h) h.classList.remove('visible');
+    try { localStorage.setItem(NOTES_INTRO_KEY, '1'); } catch(e){}
+  }
+
+  function playNotepadIntro(){
+    let seen = false;
+    try { seen = localStorage.getItem(NOTES_INTRO_KEY) === '1'; } catch(e){}
+    if (seen) return;
+    // Force open on first-ever visit so the analyst sees it.
+    showNotepad();
+    const pad = document.getElementById('notepad');
+    const tab = document.getElementById('notepadTab');
+    const hint = document.getElementById('notepadHint');
+    if (pad){
+      pad.classList.add('intro-pulse');
+      setTimeout(() => pad.classList.remove('intro-pulse'), 5000);
+    }
+    if (tab){
+      tab.classList.add('intro-pulse');
+      setTimeout(() => tab.classList.remove('intro-pulse'), 5000);
+    }
+    if (hint){
+      hint.classList.add('visible');
+      setTimeout(() => { if (hint.classList.contains('visible')) dismissNotepadHint(); }, 8000);
+    }
+  }
+
+  function initNotes(){
+    const ta = document.getElementById('notepadText');
+    const ts = document.getElementById('notepadTs');
+    const data = loadNote();
+    if (ta && data && data.note){
+      ta.value = data.note;
+      if (ts) ts.textContent = 'Saved ' + new Date(data.updated_at).toLocaleString();
+    }
+    if (ta) ta.addEventListener('input', onNoteInput);
+    if (ta) ta.addEventListener('focus', dismissNotepadHint);
+    // Restore visibility preference (default = visible)
+    let visible = true;
+    try { visible = localStorage.getItem(NOTES_VIS_KEY) !== '0'; } catch(e){}
+    if (!visible) hideNotepad();
+    refreshNotepadCtx();
+    window.addEventListener('scroll', refreshNotepadCtx, {passive:true});
+    updateNotesUI();
+    playNotepadIntro();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initNotes);
+  else initNotes();
+
+  // ---- RISK TRAIL JSON EXPORT ----------------------------------------------
+  function downloadRiskTrail(){
+    try{
+      const node = document.getElementById('risk-trail-data');
+      if(!node) return;
+      const payload = JSON.parse(node.textContent || '{}');
+      payload._exported_at = new Date().toISOString();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cust = payload.customer_id || 'customer';
+      const stamp = new Date().toISOString().slice(0,10);
+      a.href = url; a.download = `risk_trail_${cust}_${stamp}.json`;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }catch(e){ console.error('risk trail export failed', e); alert('Risk trail export failed — see console.'); }
+  }
+
+  // ---- RISK TRAIL CSV EXPORT ------------------------------------------------
+  function exportRiskTrailCSV(){
+    try{
+      const node = document.getElementById('risk-trail-data');
+      if(!node) return;
+      const payload = JSON.parse(node.textContent || '{}');
+      const rows = [];
+      const esc = v => {
+        if (v === null || v === undefined) return '';
+        const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+      };
+      const flatten = (obj, prefix) => {
+        if (obj === null || obj === undefined) { rows.push([prefix, '']); return; }
+        if (Array.isArray(obj)) {
+          obj.forEach((v, i) => flatten(v, `${prefix}[${i}]`));
+          return;
+        }
+        if (typeof obj === 'object') {
+          for (const k of Object.keys(obj)) flatten(obj[k], prefix ? `${prefix}.${k}` : k);
+          return;
+        }
+        rows.push([prefix, obj]);
+      };
+      flatten(payload, '');
+      const csv = ['key,value', ...rows.map(r => `${esc(r[0])},${esc(r[1])}`)].join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cust = payload.customer_id || 'customer';
+      const stamp = new Date().toISOString().slice(0,10);
+      a.href = url; a.download = `risk_trail_${cust}_${stamp}.csv`;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }catch(e){ console.error('CSV export failed', e); alert('CSV export failed — see console.'); }
+  }
+
+  const baseOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:11}}}}};
+
+  // ---- KPI SPARKLINES -------------------------------------------------------
+  {% if bank_v2 and bank_v2.kpis and bank_v2.kpis.balance and bank_v2.kpis.balance.series %}
+  new Chart(document.getElementById('sparkBal'),{
+    type:'line',
+    data:{labels:{{ bank_v2.kpis.balance.labels|tojson }},datasets:[{data:{{ bank_v2.kpis.balance.series|tojson }},borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.12)',fill:true,tension:.35,pointRadius:0,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+  {% endif %}
+
+  {% if bank_v2 and bank_v2.kpis and bank_v2.kpis.net_cashflow and bank_v2.kpis.net_cashflow.series %}
+  new Chart(document.getElementById('sparkNet'),{
+    type:'bar',
+    data:{labels:{{ bank_v2.kpis.net_cashflow.labels|tojson }},datasets:[{data:{{ bank_v2.kpis.net_cashflow.series|tojson }},backgroundColor:(c)=>c.raw<0?'#ef4444':'#10b981'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+  {% endif %}
+
+  // ---- CASHFLOW MAIN CHART --------------------------------------------------
+  {% if bank_v2 and bank_v2.cashflow %}
+  (function(){
+    const cf = {
+      months: {{ bank_v2.cashflow.months|tojson }},
+      credits: {{ bank_v2.cashflow.credits|tojson }},
+      debits: {{ bank_v2.cashflow.debits|tojson }},
+      balances: {{ bank_v2.cashflow.balances|tojson }},
+      maxCredits: {{ bank_v2.cashflow.max_credits|tojson }},
+      maxDebits: {{ bank_v2.cashflow.max_debits|tojson }},
+      medCredits: {{ bank_v2.cashflow.median_credits|tojson }},
+      medDebits: {{ bank_v2.cashflow.median_debits|tojson }}
+    };
+    const hasBal = cf.balances && cf.balances.some(v => v !== null && v !== undefined);
+    const datasets = [
+      {type:'bar',label:'Credits',data:cf.credits,backgroundColor:'#10b981',stack:'a'},
+      {type:'bar',label:'Debits',data:cf.debits,backgroundColor:'#ef4444',stack:'a'}
+    ];
+    if (hasBal) {
+      datasets.push({type:'line',label:'Closing Balance',data:cf.balances,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.15)',fill:false,tension:.35,yAxisID:'y1',borderWidth:3,pointRadius:4,spanGaps:true});
+    }
+    // Per-txn trend lines (hidden by default). Plot on flow axis (y).
+    const trendBase = {type:'line',fill:false,tension:.3,borderWidth:2,pointRadius:3,spanGaps:false,hidden:true};
+    const trends = {
+      mc:   Object.assign({}, trendBase, {label:'Max Credit',     data:cf.maxCredits, borderColor:'#059669', borderDash:[6,3]}),
+      md:   Object.assign({}, trendBase, {label:'Max Debit',      data:cf.maxDebits,  borderColor:'#b91c1c', borderDash:[6,3]}),
+      medc: Object.assign({}, trendBase, {label:'Median Credit',  data:cf.medCredits, borderColor:'#34d399', borderDash:[2,3]}),
+      medd: Object.assign({}, trendBase, {label:'Median Debit',   data:cf.medDebits,  borderColor:'#fb7185', borderDash:[2,3]})
+    };
+    const trendOrder = ['mc','md','medc','medd'];
+    const trendIndex = {};
+    trendOrder.forEach(k => { trendIndex[k] = datasets.length; datasets.push(trends[k]); });
+    const scales = {y:{stacked:true,title:{display:true,text:'Flow (₹)'}}};
+    if (hasBal) scales.y1 = {position:'right',grid:{display:false},title:{display:true,text:'Balance (₹)'}};
+    const chart = new Chart(document.getElementById('cashChart'),{
+      data:{labels:cf.months,datasets:datasets},
+      options:Object.assign({}, baseOpts, {scales:scales})
+    });
+    // Wire checkbox toolbar
+    document.querySelectorAll('[data-cf-series]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const key = cb.getAttribute('data-cf-series');
+        const idx = (key in trendIndex) ? trendIndex[key] : parseInt(key, 10);
+        if (Number.isNaN(idx) || idx >= datasets.length) return;
+        chart.setDatasetVisibility(idx, cb.checked);
+        chart.update();
+      });
+    });
+  })();
+  {% endif %}
+
+  // ---- ANALYSIS PANEL --------------------------------------------------------
+  {% if bank_v2 and bank_v2.analysis %}
+  (function(){
+    const node = document.getElementById('analysis-data');
+    if (!node) return;
+    let data; try { data = JSON.parse(node.textContent); } catch(e){ return; }
+    const STORE_KEY = 'bank_v2_analysis::{{ bank_v2.header.customer_id if bank_v2.header else "x" }}';
+    const PALETTE = ['#6366f1','#ef4444','#10b981','#f59e0b','#06b6d4','#a855f7','#f43f5e','#84cc16','#0ea5e9','#fb923c'];
+    const labelOf = id => (data.vars.find(v => v.id===id) || {}).label || id;
+
+    let state = {grain:'monthly', mode:'mixed', sel:[]};
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && saved.sel) state = Object.assign(state, saved);
+    } catch(e){}
+    if (!state.sel.length) {
+      (data.defaults || []).forEach(id => state.sel.push({id, kind:'amt'}));
+    }
+
+    const chartEl = document.getElementById('anChart');
+    const empty = document.getElementById('anEmpty');
+    let chart = null;
+
+    function persist(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+    function syncPills(){
+      document.querySelectorAll('#anGrain .an-pill').forEach(p => p.classList.toggle('active', p.dataset.grain===state.grain));
+      document.querySelectorAll('#anMode .an-pill').forEach(p => p.classList.toggle('active', p.dataset.mode===state.mode));
+    }
+    function syncBoxes(){
+      document.querySelectorAll('[data-an-var]').forEach(cb => {
+        const id = cb.dataset.anVar, kind = cb.dataset.anKind;
+        const allowed = state.mode==='mixed' || state.mode===kind;
+        cb.disabled = !allowed;
+        cb.parentElement.style.opacity = allowed ? 1 : 0.35;
+        cb.checked = allowed && state.sel.some(s => s.id===id && s.kind===kind);
+      });
+    }
+    function effectiveSel(){
+      return state.sel.filter(s => state.mode==='mixed' || state.mode===s.kind);
+    }
+    function rebuild(){
+      const g = data.grains[state.grain] || {buckets:[], series:{}};
+      const labels = g.buckets;
+      const sel = effectiveSel();
+      if (!sel.length){
+        if (chart){ chart.destroy(); chart=null; }
+        chartEl.style.display='none'; empty.style.display='block'; return;
+      }
+      chartEl.style.display=''; empty.style.display='none';
+      const datasets = sel.map((s, i) => {
+        const col = PALETTE[i % PALETTE.length];
+        const ser = (g.series[s.id] || {});
+        const arr = s.kind==='amt' ? (ser.amt||[]) : (ser.count||[]);
+        const isAmt = s.kind==='amt';
+        return {
+          label: labelOf(s.id) + (isAmt ? ' (₹)' : ' (#)'),
+          data: arr,
+          borderColor: col,
+          backgroundColor: isAmt ? col+'22' : col+'aa',
+          type: isAmt ? 'line' : 'bar',
+          yAxisID: isAmt ? 'yAmt' : 'yCnt',
+          tension: 0.3,
+          borderWidth: isAmt ? 2 : 0,
+          pointRadius: isAmt ? 2 : 0,
+          fill: false,
+        };
+      });
+      const hasAmt = sel.some(s=>s.kind==='amt');
+      const hasCnt = sel.some(s=>s.kind==='count');
+      const scales = {
+        x:{ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12,font:{size:10}}},
+      };
+      if (hasAmt) scales.yAmt = {position:'left',beginAtZero:true,ticks:{font:{size:10},callback:v=>v>=1e5?(v/1e5).toFixed(1)+'L':v>=1e3?(v/1e3).toFixed(0)+'k':v}};
+      if (hasCnt) scales.yCnt = {position:hasAmt?'right':'left',beginAtZero:true,grid:{drawOnChartArea:!hasAmt},ticks:{font:{size:10},stepSize:1,precision:0}};
+      if (chart){
+        chart.data.labels = labels;
+        chart.data.datasets = datasets;
+        chart.options.scales = scales;
+        chart.update();
+      } else {
+        chart = new Chart(chartEl, {
+          data:{labels, datasets},
+          options:Object.assign({}, baseOpts, {scales, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}},tooltip:{}}})
+        });
+      }
+    }
+    function refresh(){ syncPills(); syncBoxes(); rebuild(); persist(); }
+
+    document.querySelectorAll('#anGrain .an-pill').forEach(p => p.addEventListener('click', ()=>{state.grain=p.dataset.grain; refresh();}));
+    document.querySelectorAll('#anMode .an-pill').forEach(p => p.addEventListener('click', ()=>{state.mode=p.dataset.mode; refresh();}));
+    document.querySelectorAll('[data-an-var]').forEach(cb => cb.addEventListener('change', ()=>{
+      const id=cb.dataset.anVar, kind=cb.dataset.anKind;
+      state.sel = state.sel.filter(s => !(s.id===id && s.kind===kind));
+      if (cb.checked) state.sel.push({id, kind});
+      refresh();
+    }));
+    document.querySelectorAll('.an-grp-head').forEach(h => h.addEventListener('click', ()=>h.parentElement.classList.toggle('collapsed')));
+    document.getElementById('anReset').addEventListener('click', ()=>{
+      state = {grain:'monthly', mode:'mixed', sel:(data.defaults||[]).map(id=>({id,kind:'amt'}))};
+      refresh();
+    });
+    document.getElementById('anClear').addEventListener('click', ()=>{ state.sel=[]; refresh(); });
+    refresh();
+  })();
+  {% endif %}
+
+  // ---- CATEGORY MIX ---------------------------------------------------------
+  {% if bank_v2 and bank_v2.category_mix %}
+  (function(){
+    const catMixData = {
+      l1: {{ bank_v2.category_mix.l1|tojson }},
+      l2: {% if bank_v2.category_mix.l2 %}{{ bank_v2.category_mix.l2|tojson }}{% else %}null{% endif %}
+    };
+    const palette = ['#ef4444','#f59e0b','#6366f1','#10b981','#8b5cf6','#94a3b8'];
+    const ctx = document.getElementById('catMix');
+    const tailEl = document.getElementById('catMixTail');
+    const fmtINR = v => '\u20B9' + Math.round(v).toLocaleString('en-IN');
+    function renderTail(src){
+      if(!tailEl) return;
+      const t = src && src.tail;
+      if(!t){ tailEl.textContent = ''; tailEl.removeAttribute('title'); return; }
+      tailEl.textContent = '+ ' + t.count + ' more (' + fmtINR(t.total) + ')';
+      tailEl.title = t.names.join(', ');
+    }
+    const chart = new Chart(ctx,{
+      type:'doughnut',
+      data:{labels:catMixData.l1.labels,datasets:[{data:catMixData.l1.amounts,backgroundColor:palette}]},
+      options:Object.assign({}, baseOpts, {cutout:'60%'})
+    });
+    renderTail(catMixData.l1);
+    const grp = document.getElementById('catMixGrain');
+    if(grp && catMixData.l2){
+      grp.querySelectorAll('.an-pill').forEach(p => p.addEventListener('click', function(){
+        grp.querySelectorAll('.an-pill').forEach(x => x.classList.remove('active'));
+        this.classList.add('active');
+        const src = catMixData[this.dataset.grain] || catMixData.l1;
+        chart.data.labels = src.labels;
+        chart.data.datasets[0].data = src.amounts;
+        chart.update();
+        renderTail(src);
+      }));
+    }
+  })();
+  {% endif %}
+
+  // ---- REMITTER DOUGHNUTS ---------------------------------------------------
+  {% if bank_v2 and bank_v2.credit_remitters %}
+  new Chart(document.getElementById('remitCrChart'),{
+    type:'doughnut',
+    data:{labels:{{ bank_v2.credit_remitters.labels|tojson }},datasets:[{data:{{ bank_v2.credit_remitters.amounts|tojson }},backgroundColor:['#6366f1','#10b981','#f59e0b','#8b5cf6','#06b6d4']}]},
+    options:Object.assign({}, baseOpts, {cutout:'55%'})
+  });
+  {% endif %}
+
+  {% if bank_v2 and bank_v2.debit_beneficiaries %}
+  new Chart(document.getElementById('remitDrChart'),{
+    type:'doughnut',
+    data:{labels:{{ bank_v2.debit_beneficiaries.labels|tojson }},datasets:[{data:{{ bank_v2.debit_beneficiaries.amounts|tojson }},backgroundColor:['#ef4444','#f59e0b','#8b5cf6','#dc2626','#94a3b8']}]},
+    options:Object.assign({}, baseOpts, {cutout:'55%'})
+  });
+  {% endif %}
+
+  // ---- HEATMAP --------------------------------------------------------------
+  {% if bank_v2 and bank_v2.heatmap %}
+  (function(){
+    const grid = {{ bank_v2.heatmap.grid|tojson }};
+    const labels = {{ bank_v2.heatmap.month_labels|tojson }};
+    const hm = document.getElementById('heatmap');
+    const axis = document.getElementById('heatmap-axis');
+    if(!hm) return;
+    grid.forEach((row, i) => {
+      const r = document.createElement('div'); r.className='heat-row';
+      const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent = labels[i] || '';
+      const cells = document.createElement('div'); cells.className='cells';
+      row.forEach(v => {
+        const d = document.createElement('div');
+        if(v) d.className = 'l' + v;
+        cells.appendChild(d);
+      });
+      r.appendChild(lbl); r.appendChild(cells); hm.appendChild(r);
+    });
+    if(axis){
+      for(let i=1;i<=31;i++){
+        const d = document.createElement('div');
+        d.textContent = (i===1||i%5===0||i===31) ? i : '';
+        axis.appendChild(d);
+      }
+    }
+  })();
+  {% endif %}
+
+  // ---- TX TABLE: FILTER + SORT + PAGINATION ---------------------------------
+  let activeCls = 'all';
+  let sortKey = null, sortDir = 'desc';
+  let txPage = 1;
+  const TX_PAGE_SIZE = parseInt((document.getElementById('txTable')||{}).dataset?.pageSize || '20', 10);
+
+  function togClass(el){
+    document.querySelectorAll('.tx-tools .chip').forEach(c=>c.classList.remove('on'));
+    el.classList.add('on'); activeCls = el.dataset.cls;
+    txPage = 1; applyTxView();
+  }
+  function filterTx(){ txPage = 1; applyTxView(); }
+
+  function sortTx(key){
+    if(sortKey === key){ sortDir = (sortDir === 'asc') ? 'desc' : 'asc'; }
+    else { sortKey = key; sortDir = 'desc'; }
+    const tbody = document.getElementById('txBody');
+    if(!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const numeric = (key !== 'date');
+    rows.sort((a,b)=>{
+      const av = a.dataset[key] || '';
+      const bv = b.dataset[key] || '';
+      const cmp = numeric ? (parseFloat(av||0) - parseFloat(bv||0)) : av.localeCompare(bv);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    document.querySelectorAll('#txTable .sort-ind').forEach(s => {
+      s.textContent = (s.dataset.key === sortKey) ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    });
+    txPage = 1; applyTxView();
+  }
+
+  function pageTx(delta){
+    const matches = currentMatches();
+    const total = matches.length;
+    const totalPages = Math.max(1, Math.ceil(total / TX_PAGE_SIZE));
+    txPage = Math.min(totalPages, Math.max(1, txPage + delta));
+    applyTxView();
+  }
+  function gotoTxPage(p){ txPage = p; applyTxView(); }
+
+  function currentMatches(){
+    const search = document.getElementById('txSearch');
+    const q = search ? search.value.toLowerCase() : '';
+    return Array.from(document.querySelectorAll('#txBody tr')).filter(r => {
+      const matchCls = activeCls === 'all' || r.dataset.cls === activeCls;
+      const matchQ = !q || (r.dataset.text || '').includes(q);
+      return matchCls && matchQ;
+    });
+  }
+
+  function applyTxView(){
+    const all = Array.from(document.querySelectorAll('#txBody tr'));
+    const matches = currentMatches();
+    const total = matches.length;
+    const totalPages = Math.max(1, Math.ceil(total / TX_PAGE_SIZE));
+    if(txPage > totalPages) txPage = totalPages;
+    const start = (txPage - 1) * TX_PAGE_SIZE;
+    const end = start + TX_PAGE_SIZE;
+    const visible = new Set(matches.slice(start, end));
+    all.forEach(r => { r.style.display = visible.has(r) ? '' : 'none'; });
+    // Pager UI
+    const info = document.getElementById('txPagerInfo');
+    const pages = document.getElementById('txPagerPages');
+    const prev = document.getElementById('txPagerPrev');
+    const next = document.getElementById('txPagerNext');
+    if(info) info.textContent = total ? `Showing ${start+1}–${Math.min(end,total)} of ${total}` : 'No matches';
+    if(prev) prev.disabled = (txPage <= 1);
+    if(next) next.disabled = (txPage >= totalPages);
+    if(pages){
+      pages.innerHTML = '';
+      // Compact page list: 1 … (p-1) p (p+1) … N
+      const nums = new Set([1, totalPages, txPage, txPage-1, txPage+1]);
+      const sorted = [...nums].filter(n => n >= 1 && n <= totalPages).sort((a,b)=>a-b);
+      let last = 0;
+      sorted.forEach(n => {
+        if(last && n - last > 1){
+          const dots = document.createElement('span'); dots.textContent = '…'; dots.style.padding = '0 4px';
+          pages.appendChild(dots);
+        }
+        const b = document.createElement('button');
+        b.className = 'btn'; b.textContent = n;
+        b.style.cssText = 'padding:4px 8px;' + (n === txPage ? 'background:var(--accent,#6366f1);color:#fff;border-color:transparent' : '');
+        b.onclick = () => gotoTxPage(n);
+        pages.appendChild(b);
+        last = n;
+      });
+    }
+  }
+
+  // Initialize on load
+  if(document.getElementById('txBody')){ applyTxView(); }
+</script>
+
+<script>
+  /* =========================================================================
+     ADMIN EDIT MODE — inline L2 category editor for All Transactions table.
+     Gated by a hardcoded key. Edits fan out to rows with identical normalized
+     narration within this report. On save, POSTs to /save; on network failure
+     falls back to a JSON-patch download so work isn't lost.
+     ========================================================================= */
+  (function(){
+    const ADMIN_KEY = '91221';
+    const L2_OPTIONS = {{ (bank_v2.transactions.l2_options if bank_v2 and bank_v2.transactions else [])|tojson }};
+    const L2_TO_L1   = {{ (bank_v2.transactions.l2_to_l1 if bank_v2 and bank_v2.transactions else {})|tojson }};
+    const CUSTOMER_ID = {{ (bank_v2.header.customer_id if bank_v2 and bank_v2.header else 'null')|tojson }};
+
+    // pendingEdits: signature -> { date, amount, narration, new_l2 }
+    // Signature is `${date}|${dr_or_cr_amount}|${narration_full}` and uniquely
+    // identifies a row that needs to be updated on the backend.
+    const pendingEdits = new Map();
+
+    function toast(msg, kind){
+      let el = document.getElementById('adminToast');
+      if(!el){
+        el = document.createElement('div');
+        el.id = 'adminToast'; el.className = 'admin-toast';
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.className = 'admin-toast show ' + (kind || '');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => { el.className = 'admin-toast ' + (kind || ''); }, 2400);
+    }
+
+    function rowSignature(tr){
+      const d = tr.dataset.date || '';
+      const dr = parseFloat(tr.dataset.debit || '0');
+      const cr = parseFloat(tr.dataset.credit || '0');
+      const amt = dr || cr || 0;
+      const narr = tr.dataset.narrFull || '';
+      return d + '|' + amt + '|' + narr;
+    }
+
+    function updateEditCount(){
+      const n = pendingEdits.size;
+      const el = document.getElementById('adminEditCount');
+      if(el){ el.textContent = '(' + n + ')'; el.style.display = n ? 'inline' : 'none'; }
+    }
+
+    function applyL2ToRow(tr, newL2){
+      tr.dataset.l2 = newL2;
+      const l2cell = tr.querySelector('.cat-l2-cell');
+      const l1cell = tr.querySelector('.cat-l1-cell');
+      if(l2cell){
+        l2cell.dataset.l2 = newL2;
+        // Restore display span (drops any open <select>)
+        l2cell.innerHTML = '<span class="tag cat">' + newL2 + '</span>';
+      }
+      if(l1cell){
+        const newL1 = L2_TO_L1[newL2] || 'Transfer';
+        l1cell.innerHTML = '<span class="tag cat">' + newL1 + '</span>';
+      }
+      tr.classList.add('row-edited');
+      // Keep the data-text used by the filter input in sync so filtering still works.
+      const narr = tr.dataset.narrFull || '';
+      tr.dataset.text = (narr + ' ' + (L2_TO_L1[newL2] || '') + ' ' + newL2).toLowerCase();
+    }
+
+    function recordEdit(tr, newL2){
+      const dr = parseFloat(tr.dataset.debit || '0');
+      const cr = parseFloat(tr.dataset.credit || '0');
+      pendingEdits.set(rowSignature(tr), {
+        date: tr.dataset.date,
+        amount: dr || cr || 0,
+        dr_cr: dr ? 'D' : 'C',
+        narration: tr.dataset.narrFull || '',
+        new_l2: newL2,
+      });
+    }
+
+    function openEditor(cell){
+      if(document.body.dataset.editMode !== 'on') return;
+      if(cell.querySelector('select.l2-picker')) return; // already open
+      const tr = cell.closest('tr');
+      const current = cell.dataset.l2 || '';
+      const sel = document.createElement('select');
+      sel.className = 'l2-picker';
+      L2_OPTIONS.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt; o.textContent = opt;
+        if(opt === current) o.selected = true;
+        sel.appendChild(o);
+      });
+      cell.innerHTML = '';
+      cell.appendChild(sel);
+      sel.focus();
+      let committed = false;
+      const onBlur = () => {
+        if(committed) return;
+        // User clicked away without picking — restore the span.
+        if(cell.contains(sel)) applyL2ToRow(tr, current);
+      };
+      const onChange = () => {
+        committed = true;
+        sel.removeEventListener('blur', onBlur);
+        const newL2 = sel.value;
+        if(newL2 === current){
+          applyL2ToRow(tr, current);
+          return;
+        }
+        const norm = tr.dataset.narrNorm || '';
+        const matched = Array.from(document.querySelectorAll('#txBody tr'))
+          .filter(r => (r.dataset.narrNorm || '') === norm);
+        matched.forEach(r => { applyL2ToRow(r, newL2); recordEdit(r, newL2); });
+        updateEditCount();
+        toast('Updated ' + matched.length + ' row' + (matched.length === 1 ? '' : 's') + ' (pending save)', 'ok');
+      };
+      sel.addEventListener('change', onChange);
+      sel.addEventListener('blur', onBlur);
+    }
+
+    // Delegate clicks on L2 cells in the transactions table.
+    document.addEventListener('click', (e) => {
+      const cell = e.target.closest('#txTable .cat-l2-cell');
+      if(cell) openEditor(cell);
+    });
+
+    window.toggleAdminMode = function(){
+      const on = document.body.dataset.editMode === 'on';
+      if(on){
+        if(pendingEdits.size > 0 && !confirm('Exit edit mode? ' + pendingEdits.size + ' unsaved edit(s) will be discarded.')) return;
+        pendingEdits.clear();
+        document.body.dataset.editMode = '';
+        document.querySelectorAll('#txBody tr.row-edited').forEach(r => r.classList.remove('row-edited'));
+        document.getElementById('adminSaveBtn').style.display = 'none';
+        updateEditCount();
+        return;
+      }
+      const key = prompt('Enter admin key to enable edit mode:');
+      if(key === null) return;
+      if(key !== ADMIN_KEY){ toast('Invalid admin key', 'err'); return; }
+      document.body.dataset.editMode = 'on';
+      document.getElementById('adminSaveBtn').style.display = '';
+      toast('Edit mode ON — click any sub-category cell to edit', 'ok');
+    };
+
+    function downloadPatch(payload){
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'category_edits_' + (payload.customer_id || 'customer') + '_' + Date.now() + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    window.saveAdminEdits = async function(){
+      if(pendingEdits.size === 0){ toast('No edits to save', 'err'); return; }
+      const payload = {
+        customer_id: CUSTOMER_ID,
+        edits: Array.from(pendingEdits.values()),
+      };
+      try {
+        const res = await fetch('save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        toast('Saved · updated ' + (data.updated ?? '?') + ' row(s) in rgs.csv', 'ok');
+        pendingEdits.clear();
+        updateEditCount();
+        setTimeout(() => location.reload(), 900);
+      } catch(err){
+        toast('No save endpoint — downloading patch JSON instead', 'err');
+        downloadPatch(payload);
+      }
+    };
+  })();
+</script>
+</body>
+</html>

@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Credit Journey — Live Flow</title>
+<style>
+:root {
+  --bg: #060910;
+  --card: #0f1624;
+  --card2: #141e2e;
+  --border: #1a2d4a;
+  --cyan: #00e5ff;
+  --purple: #8b5cf6;
+  --green: #10b981;
+  --amber: #f59e0b;
+  --red: #ef4444;
+  --pink: #ec4899;
+  --indigo: #6366f1;
+  --text: #e2e8f0;
+  --muted: #4a6380;
+  --muted2: #64748b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, monospace; min-height: 100vh; }
+body::before {
+  content: ''; position: fixed; inset: 0;
+  background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,229,255,0.01) 2px, rgba(0,229,255,0.01) 4px);
+  pointer-events: none; z-index: 0;
+}
+
+/* LAYOUT */
+.layout { display: grid; grid-template-columns: 1fr 340px; gap: 0; min-height: 100vh; position: relative; z-index: 1; }
+@media(max-width:900px) { .layout { grid-template-columns: 1fr; } }
+
+/* LEFT — FLOW */
+.flow-col { padding: 28px 20px 60px 28px; border-right: 1px solid var(--border); }
+
+/* RIGHT — PANEL */
+.panel-col {
+  position: sticky; top: 0; height: 100vh; overflow-y: auto;
+  padding: 20px 16px; background: var(--card);
+  border-left: 1px solid var(--border);
+}
+
+/* HEADER */
+.hdr { margin-bottom: 24px; }
+.hdr h1 { font-size: 1.1rem; font-weight: 800; color: var(--cyan); letter-spacing: 0.06em; text-shadow: 0 0 20px rgba(0,229,255,0.3); }
+.hdr p { font-size: 0.68rem; color: var(--muted2); margin-top: 4px; }
+.hdr-badges { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+.hbadge { font-size: 0.58rem; padding: 2px 8px; border-radius: 10px; border: 1px solid; font-weight: 700; }
+
+/* CONTROLS */
+.controls { display: flex; gap: 8px; margin-bottom: 22px; flex-wrap: wrap; align-items: center; }
+.btn {
+  font-size: 0.7rem; padding: 7px 16px; border-radius: 7px; border: 1px solid; cursor: pointer;
+  font-family: inherit; font-weight: 700; letter-spacing: 0.05em; transition: all 0.15s;
+}
+.btn-play { background: rgba(16,185,129,0.12); border-color: var(--green); color: var(--green); }
+.btn-play:hover { background: rgba(16,185,129,0.22); }
+.btn-reset { background: rgba(245,158,11,0.08); border-color: var(--amber); color: var(--amber); }
+.btn-reset:hover { background: rgba(245,158,11,0.16); }
+.btn-pause { background: rgba(99,102,241,0.1); border-color: var(--indigo); color: var(--indigo); }
+.speed-label { font-size: 0.65rem; color: var(--muted2); }
+.speed-select {
+  background: var(--card2); border: 1px solid var(--border); color: var(--text);
+  font-size: 0.65rem; padding: 5px 8px; border-radius: 6px; font-family: inherit;
+}
+
+/* PROGRESS BAR */
+.progress-wrap { margin-bottom: 20px; }
+.progress-label { font-size: 0.6rem; color: var(--muted2); margin-bottom: 5px; display: flex; justify-content: space-between; }
+.progress-bar { height: 3px; background: var(--border); border-radius: 2px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, var(--cyan), var(--purple)); border-radius: 2px; transition: width 0.4s ease; width: 0%; }
+
+/* STEP CARDS */
+.steps { display: flex; flex-direction: column; gap: 0; position: relative; }
+
+/* CONNECTOR LINE */
+.connector {
+  display: flex; flex-direction: column; align-items: center;
+  height: 36px; position: relative;
+}
+.conn-line { width: 2px; flex: 1; background: var(--border); transition: background 0.4s; }
+.conn-line.active { background: var(--cyan); box-shadow: 0 0 8px rgba(0,229,255,0.5); }
+.conn-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--border); border: 2px solid var(--border);
+  position: absolute; top: 50%; transform: translateY(-50%);
+  transition: all 0.3s;
+}
+.conn-dot.traveling {
+  background: var(--cyan);
+  border-color: var(--cyan);
+  box-shadow: 0 0 12px var(--cyan), 0 0 24px rgba(0,229,255,0.4);
+  animation: travelDot 0.6s ease-in-out;
+}
+@keyframes travelDot {
+  0% { transform: translateY(-200%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translateY(-50%); }
+}
+
+/* PARALLEL ROW */
+.parallel-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.parallel-label {
+  text-align: center; font-size: 0.58rem; color: var(--amber);
+  background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2);
+  border-radius: 4px; padding: 3px 8px; margin-bottom: 8px;
+  display: inline-block;
+}
+
+/* STEP CARD */
+.step-card {
+  background: var(--card); border: 1px solid var(--border);
+  border-radius: 10px; overflow: hidden; transition: all 0.4s;
+  position: relative;
+}
+.step-card.active {
+  border-color: var(--cyan);
+  box-shadow: 0 0 20px rgba(0,229,255,0.15), 0 0 40px rgba(0,229,255,0.06);
+}
+.step-card.done { border-color: rgba(16,185,129,0.35); }
+.step-card.active-purple { border-color: var(--purple) !important; box-shadow: 0 0 20px rgba(139,92,246,0.15) !important; }
+.step-card.active-green  { border-color: var(--green)  !important; box-shadow: 0 0 20px rgba(16,185,129,0.15) !important; }
+
+/* GLOW SWEEP */
+.step-card.active::before {
+  content: ''; position: absolute; top: 0; left: -100%; width: 60%; height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(0,229,255,0.06), transparent);
+  animation: sweep 1.2s ease forwards;
+}
+@keyframes sweep { to { left: 150%; } }
+
+.step-header {
+  display: flex; align-items: center; gap: 10px;
+  padding: 11px 14px; cursor: pointer;
+}
+.step-num {
+  width: 28px; height: 28px; border-radius: 7px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 0.7rem; font-weight: 800; flex-shrink: 0;
+}
+.step-title { font-size: 0.8rem; font-weight: 700; }
+.step-sub { font-size: 0.62rem; color: var(--muted2); margin-top: 2px; }
+.step-status {
+  margin-left: auto; font-size: 0.58rem; padding: 2px 7px;
+  border-radius: 4px; border: 1px solid; flex-shrink: 0;
+}
+.status-waiting { border-color: var(--border); color: var(--muted); }
+.status-running { border-color: var(--cyan); color: var(--cyan); background: rgba(0,229,255,0.08); animation: blink 1s infinite; }
+.status-done    { border-color: var(--green); color: var(--green); background: rgba(16,185,129,0.08); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.5} }
+
+/* STEP BODY */
+.step-body {
+  max-height: 0; overflow: hidden;
+  transition: max-height 0.5s cubic-bezier(0.4,0,0.2,1);
+  border-top: 1px solid transparent;
+}
+.step-body.open {
+  max-height: 600px;
+  border-top-color: var(--border);
+}
+.step-body-inner { padding: 12px 14px 14px; }
+
+/* DATA LINES */
+.data-line {
+  display: flex; align-items: baseline; gap: 8px; margin-bottom: 5px;
+  font-size: 0.65rem; opacity: 0; transform: translateX(-6px);
+  transition: all 0.35s;
+}
+.data-line.visible { opacity: 1; transform: none; }
+.dl-key { color: var(--muted2); flex-shrink: 0; min-width: 140px; }
+.dl-val { color: var(--cyan); font-weight: 600; }
+.dl-val.green  { color: var(--green); }
+.dl-val.amber  { color: var(--amber); }
+.dl-val.red    { color: var(--red); }
+.dl-val.purple { color: var(--purple); }
+.dl-val.pink   { color: var(--pink); }
+
+/* VALIDATOR LINE */
+.validator-line {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 0.6rem; color: var(--pink); margin-top: 8px; margin-bottom: 4px;
+  opacity: 0; transition: opacity 0.3s 0.6s;
+}
+.validator-line.visible { opacity: 1; }
+.vcheck-mini { font-size: 0.58rem; padding: 1px 6px; border-radius: 3px; background: rgba(236,72,153,0.08); border: 1px solid rgba(236,72,153,0.2); color: var(--pink); margin-right: 3px; }
+
+/* AGENT LABEL */
+.agent-call {
+  font-size: 0.62rem; color: var(--purple);
+  background: rgba(139,92,246,0.08); border: 1px solid rgba(139,92,246,0.25);
+  border-radius: 5px; padding: 4px 9px; margin-bottom: 6px;
+  opacity: 0; transition: opacity 0.3s;
+  display: inline-block;
+}
+.agent-call.visible { opacity: 1; }
+
+/* MODEL TAG */
+.model-tag {
+  font-size: 0.58rem; padding: 2px 7px; border-radius: 3px;
+  background: rgba(0,229,255,0.05); border: 1px solid rgba(0,229,255,0.2); color: var(--cyan);
+  display: inline-block; margin-bottom: 6px;
+  opacity: 0; transition: opacity 0.3s 0.2s;
+}
+.model-tag.visible { opacity: 1; }
+
+/* DICT UPDATE */
+.dict-row {
+  display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px;
+  opacity: 0; transition: opacity 0.3s 0.8s;
+}
+.dict-row.visible { opacity: 1; }
+.dk { font-size: 0.58rem; padding: 1px 6px; border-radius: 3px; background: rgba(99,102,241,0.1); border: 1px solid rgba(99,102,241,0.2); color: var(--indigo); }
+
+/* RIGHT PANEL */
+.panel-title { font-size: 0.72rem; font-weight: 800; color: var(--cyan); margin-bottom: 12px; letter-spacing: 0.06em; }
+.panel-step-name {
+  font-size: 0.78rem; font-weight: 700; padding: 8px 12px;
+  background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.2);
+  border-radius: 7px; margin-bottom: 12px; min-height: 38px;
+  display: flex; align-items: center; gap: 8px;
+  transition: all 0.3s;
+}
+.panel-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--green); flex-shrink: 0; animation: pulse 1.5s infinite; }
+@keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.5;transform:scale(0.8)} }
+
+.dict-dump {
+  background: rgba(0,0,0,0.4); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; font-size: 0.62rem;
+  line-height: 1.8; min-height: 100px; font-family: 'Courier New', monospace;
+  max-height: 55vh; overflow-y: auto;
+}
+.dict-dump .dk2 { color: var(--muted2); }
+.dict-dump .dv  { color: var(--cyan); }
+.dict-dump .dv.g { color: var(--green); }
+.dict-dump .dv.a { color: var(--amber); }
+.dict-dump .dv.r { color: var(--red); }
+.dict-dump .dv.p { color: var(--purple); }
+.dict-dump .new-entry { animation: flashIn 0.5s ease; }
+@keyframes flashIn { 0%{background:rgba(0,229,255,0.1)} 100%{background:transparent} }
+
+.panel-log { margin-top: 14px; }
+.log-title { font-size: 0.6rem; font-weight: 800; color: var(--muted2); letter-spacing: 0.1em; margin-bottom: 6px; }
+.log-entry {
+  font-size: 0.6rem; color: var(--muted2); padding: 3px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.03);
+  opacity: 0; animation: logIn 0.3s ease forwards;
+}
+@keyframes logIn { to { opacity: 1; } }
+.log-entry .lt { color: var(--muted); margin-right: 6px; }
+.log-entry .lm { color: var(--text); }
+.log-entry.success .lm { color: var(--green); }
+.log-entry.agent-log .lm { color: var(--purple); }
+.log-entry.warn .lm { color: var(--amber); }
+
+/* STEP COLORS */
+.s-cyan   { background: rgba(0,229,255,0.12); color: var(--cyan); }
+.s-purple { background: rgba(139,92,246,0.15); color: var(--purple); }
+.s-green  { background: rgba(16,185,129,0.12); color: var(--green); }
+.s-amber  { background: rgba(245,158,11,0.12); color: var(--amber); }
+.s-red    { background: rgba(239,68,68,0.12); color: var(--red); }
+.s-indigo { background: rgba(99,102,241,0.14); color: var(--indigo); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- LEFT: FLOW -->
+  <div class="flow-col">
+    <div class="hdr">
+      <h1>⚡ AGENTIC CREDIT UNDERWRITING</h1>
+      <p>Personal Loan · Salaried · Digital End-to-End · Live Journey Simulation</p>
+      <div class="hdr-badges">
+        <span class="hbadge" style="border-color:rgba(16,185,129,0.4);color:var(--green)">ZERO TOKEN COST</span>
+        <span class="hbadge" style="border-color:rgba(0,229,255,0.3);color:var(--cyan)">IN-HOUSE LLMs · SAGEMAKER</span>
+        <span class="hbadge" style="border-color:rgba(139,92,246,0.35);color:var(--purple)">MODEL GATEWAY · mTLS</span>
+        <span class="hbadge" style="border-color:rgba(245,158,11,0.3);color:var(--amber)">RBI DLG COMPLIANT</span>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="btn btn-play" onclick="startJourney()">▶ START JOURNEY</button>
+      <button class="btn btn-pause" onclick="togglePause()">⏸ PAUSE</button>
+      <button class="btn btn-reset" onclick="resetJourney()">↺ RESET</button>
+      <span class="speed-label">Speed:</span>
+      <select class="speed-select" id="speedSelect">
+        <option value="1.5">Fast</option>
+        <option value="1" selected>Normal</option>
+        <option value="0.5">Slow</option>
+      </select>
+    </div>
+
+    <div class="progress-wrap">
+      <div class="progress-label">
+        <span>Journey Progress</span>
+        <span id="progressPct">0%</span>
+      </div>
+      <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    </div>
+
+    <div class="steps" id="stepsContainer">
+
+      <!-- STEP 1 -->
+      <div class="step-card" id="card-1">
+        <div class="step-header" onclick="toggleCard(1)">
+          <div class="step-num s-cyan">01</div>
+          <div>
+            <div class="step-title">Application Form + KYC + Sal Slip + Address</div>
+            <div class="step-sub">Orchestrator · Karza · EPFO · LLaMA-3 Sal Slip · TinyBERT Address</div>
+          </div>
+          <div class="step-status status-waiting" id="status-1">WAITING</div>
+        </div>
+        <div class="step-body" id="body-1">
+          <div class="step-body-inner">
+            <div class="model-tag" id="mt-1">Mistral-7B Orchestrator · LLaMA-3-8B Sal Slip · TinyBERT Address · SageMaker Endpoints</div>
+            <div class="agent-call" id="ac-1">🤖 Orchestrator → tool:karza_kyc | tool:epfo_verify | agent:sal_slip_analyzer | agent:address_tagger</div>
+            <div class="data-line" id="d1-1"><span class="dl-key">customer_name</span><span class="dl-val">"Rahul Sharma"</span></div>
+            <div class="data-line" id="d1-2"><span class="dl-key">pan</span><span class="dl-val">"ABCPS1234R"</span></div>
+            <div class="data-line" id="d1-3"><span class="dl-key">dob</span><span class="dl-val">"1991-03-14"</span></div>
+            <div class="data-line" id="d1-4"><span class="dl-key">loan_amount_req</span><span class="dl-val amber">₹8,00,000</span></div>
+            <div class="data-line" id="d1-5"><span class="dl-key">tenure_req</span><span class="dl-val amber">48 months</span></div>
+            <div class="data-line" id="d1-6"><span class="dl-key">declared_income</span><span class="dl-val green">₹95,000 / month</span></div>
+            <div class="data-line" id="d1-7"><span class="dl-key">employer</span><span class="dl-val">"Infosys Ltd"</span></div>
+            <div class="data-line" id="d1-8"><span class="dl-key">kyc_verified</span><span class="dl-val green">TRUE · Karza API</span></div>
+            <div class="data-line" id="d1-9"><span class="dl-key">kyc_dedupe_flag</span><span class="dl-val green">CLEAN</span></div>
+            <div class="data-line" id="d1-10"><span class="dl-key">employment_verified</span><span class="dl-val green">TRUE · EPFO 36 months</span></div>
+            <div class="data-line" id="d1-11"><span class="dl-key">sal_gross</span><span class="dl-val green">₹1,08,000 · LLaMA-3</span></div>
+            <div class="data-line" id="d1-12"><span class="dl-key">sal_net</span><span class="dl-val green">₹87,500 · LLaMA-3</span></div>
+            <div class="data-line" id="d1-13"><span class="dl-key">address_zone_score</span><span class="dl-val green">10K · Whitefield, Bengaluru</span></div>
+            <div class="validator-line" id="vl-1">
+              🛡 VALIDATOR PASS &nbsp;
+              <span class="vcheck-mini">schema ✓</span>
+              <span class="vcheck-mini">income delta ±12% ✓</span>
+              <span class="vcheck-mini">confidence 0.91 ✓</span>
+            </div>
+            <div class="dict-row" id="dr-1">
+              <span class="dk">loan_amount</span><span class="dk">tenure</span><span class="dk">declared_income</span>
+              <span class="dk">kyc_verified</span><span class="dk">employment_verified</span><span class="dk">sal_gross</span>
+              <span class="dk">sal_net</span><span class="dk">address_zone_score</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector" id="conn-1">
+        <div class="conn-line" id="connline-1"></div>
+        <div class="conn-dot" id="conndot-1"></div>
+      </div>
+
+      <!-- PARALLEL HEADER -->
+      <div style="text-align:center;margin-bottom:8px;">
+        <span class="parallel-label" id="parallel-label">⚡ PARALLEL · Bureau + Banking · AWS Step Functions · Independent branches</span>
+      </div>
+
+      <!-- STEP 2A + 2B PARALLEL -->
+      <div class="parallel-row">
+
+        <div class="step-card" id="card-2a">
+          <div class="step-header" onclick="toggleCard('2a')">
+            <div class="step-num s-purple">2A</div>
+            <div>
+              <div class="step-title">Bureau Fetch + Analysis</div>
+              <div class="step-sub">CIBIL API → DeepSeek-7B Bureau Analyzer</div>
+            </div>
+            <div class="step-status status-waiting" id="status-2a">WAITING</div>
+          </div>
+          <div class="step-body" id="body-2a">
+            <div class="step-body-inner">
+              <div class="model-tag" id="mt-2a">DeepSeek-7B Bureau Analyzer · SageMaker · Constrained JSON</div>
+              <div class="agent-call" id="ac-2a">🤖 Orchestrator → tool:cibil_fetch | agent:bureau_analyzer | tool:validator</div>
+              <div class="data-line" id="d2a-1"><span class="dl-key">cibil_score</span><span class="dl-val green">762</span></div>
+              <div class="data-line" id="d2a-2"><span class="dl-key">max_dpd_l24m</span><span class="dl-val green">0</span></div>
+              <div class="data-line" id="d2a-3"><span class="dl-key">max_dpd_l18m</span><span class="dl-val green">0</span></div>
+              <div class="data-line" id="d2a-4"><span class="dl-key">npa_flag</span><span class="dl-val green">FALSE</span></div>
+              <div class="data-line" id="d2a-5"><span class="dl-key">enq_count_l6m</span><span class="dl-val amber">3</span></div>
+              <div class="data-line" id="d2a-6"><span class="dl-key">total_exposure</span><span class="dl-val amber">₹4.2L (auto loan)</span></div>
+              <div class="data-line" id="d2a-7"><span class="dl-key">bureau_risk_grade</span><span class="dl-val green">B+ · DeepSeek</span></div>
+              <div class="data-line" id="d2a-8"><span class="dl-key">payment_behaviour</span><span class="dl-val green">"Consistent, no overdue" · conf 0.88</span></div>
+              <div class="data-line" id="d2a-9"><span class="dl-key">bureau_persona</span><span class="dl-val purple">"Emerging Salaried — Credit Active"</span></div>
+              <div class="validator-line" id="vl-2a">
+                🛡 VALIDATOR PASS &nbsp;
+                <span class="vcheck-mini">DPD match ✓</span>
+                <span class="vcheck-mini">grade ∈ enum ✓</span>
+                <span class="vcheck-mini">no hallucinated accounts ✓</span>
+              </div>
+              <div class="dict-row" id="dr-2a">
+                <span class="dk">bureau_risk_grade</span><span class="dk">max_dpd_l24</span>
+                <span class="dk">npa_flag</span><span class="dk">enq_count_l6m</span>
+                <span class="dk">bureau_persona</span><span class="dk">bureau_report_path</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="step-card" id="card-2b">
+          <div class="step-header" onclick="toggleCard('2b')">
+            <div class="step-num s-green">2B</div>
+            <div>
+              <div class="step-title">Banking Fetch + Analysis</div>
+              <div class="step-sub">CBS CDC → BERT Tagger → DeepSeek Banking Analyzer</div>
+            </div>
+            <div class="step-status status-waiting" id="status-2b">WAITING</div>
+          </div>
+          <div class="step-body" id="body-2b">
+            <div class="step-body-inner">
+              <div class="model-tag" id="mt-2b">BERT-base Txn Tagger + DeepSeek-7B Banking · SageMaker</div>
+              <div class="agent-call" id="ac-2b">🤖 Orchestrator → tool:cbs_fetch | agent:txn_tagger | tool:feature_eng_100 | agent:banking_analyzer</div>
+              <div class="data-line" id="d2b-1"><span class="dl-key">txns_fetched</span><span class="dl-val">12M · 847 transactions</span></div>
+              <div class="data-line" id="d2b-2"><span class="dl-key">data_quality_score</span><span class="dl-val green">0.91 (all channels present)</span></div>
+              <div class="data-line" id="d2b-3"><span class="dl-key">salary_income_detected</span><span class="dl-val green">₹1,06,200 avg · consistent</span></div>
+              <div class="data-line" id="d2b-4"><span class="dl-key">existing_emi_debits</span><span class="dl-val amber">₹12,400 / month (auto)</span></div>
+              <div class="data-line" id="d2b-5"><span class="dl-key">bounce_count_l12m</span><span class="dl-val green">0</span></div>
+              <div class="data-line" id="d2b-6"><span class="dl-key">affluence_band</span><span class="dl-val green">B · DeepSeek · conf 0.83</span></div>
+              <div class="data-line" id="d2b-7"><span class="dl-key">cashflow_consistency</span><span class="dl-val green">"HIGH · salary regular, balance stable"</span></div>
+              <div class="data-line" id="d2b-8"><span class="dl-key">negative_flags</span><span class="dl-val green">NONE</span></div>
+              <div class="data-line" id="d2b-9"><span class="dl-key">spend_category</span><span class="dl-val purple">"Moderate Spender — Urban Salaried"</span></div>
+              <div class="validator-line" id="vl-2b">
+                🛡 VALIDATOR PASS &nbsp;
+                <span class="vcheck-mini">salary ≥1 in L3M ✓</span>
+                <span class="vcheck-mini">income vs sal ±15% ✓</span>
+                <span class="vcheck-mini">dq score &gt;0.6 ✓</span>
+              </div>
+              <div class="dict-row" id="dr-2b">
+                <span class="dk">affluence_band</span><span class="dk">cashflow_consistency</span>
+                <span class="dk">salary_income_detected</span><span class="dk">negative_flags</span>
+                <span class="dk">bounce_count</span><span class="dk">banking_report_path</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- end parallel -->
+
+      <div class="connector" id="conn-2">
+        <div class="conn-line" id="connline-2"></div>
+        <div class="conn-dot" id="conndot-2"></div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="step-card" id="card-3">
+        <div class="step-header" onclick="toggleCard(3)">
+          <div class="step-num s-amber">03</div>
+          <div>
+            <div class="step-title">ML Pipeline — Scorecard + Affluence + Policy Features</div>
+            <div class="step-sub">BRE API calls · Direct tool use · No LLM</div>
+          </div>
+          <div class="step-status status-waiting" id="status-3">WAITING</div>
+        </div>
+        <div class="step-body" id="body-3">
+          <div class="step-body-inner">
+            <div class="model-tag" id="mt-3">BRE Scorecard API · Affluence API · Python Feature Engine · No LLM</div>
+            <div class="agent-call" id="ac-3">🤖 Orchestrator → tool:scorecard_bre | tool:affluence_bre | tool:policy_feature_creator</div>
+            <div class="data-line" id="d3-1"><span class="dl-key">pd_score</span><span class="dl-val green">0.042 (low default risk)</span></div>
+            <div class="data-line" id="d3-2"><span class="dl-key">risk_band</span><span class="dl-val green">Band 2 / 7</span></div>
+            <div class="data-line" id="d3-3"><span class="dl-key">affluence_value</span><span class="dl-val green">68.4</span></div>
+            <div class="data-line" id="d3-4"><span class="dl-key">affluence_segment</span><span class="dl-val green">B</span></div>
+            <div class="data-line" id="d3-5"><span class="dl-key">foir_computed</span><span class="dl-val amber">0.38 (salary - existing EMI)</span></div>
+            <div class="data-line" id="d3-6"><span class="dl-key">policy_features_created</span><span class="dl-val green">47 features · ready</span></div>
+            <div class="dict-row" id="dr-3">
+              <span class="dk">pd_score</span><span class="dk">risk_band</span><span class="dk">affluence_value</span>
+              <span class="dk">affluence_segment</span><span class="dk">foir_computed</span><span class="dk">policy_features{}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector" id="conn-3">
+        <div class="conn-line" id="connline-3"></div>
+        <div class="conn-dot" id="conndot-3"></div>
+      </div>
+
+      <!-- STEP 4 -->
+      <div class="step-card" id="card-4">
+        <div class="step-header" onclick="toggleCard(4)">
+          <div class="step-num s-red">04</div>
+          <div>
+            <div class="step-title">Policy Validation — Waterfall Engine</div>
+            <div class="step-sub">L1–L5 Pure Python · L6 DeepSeek mid-zone · RBI DLG</div>
+          </div>
+          <div class="step-status status-waiting" id="status-4">WAITING</div>
+        </div>
+        <div class="step-body" id="body-4">
+          <div class="step-body-inner">
+            <div class="model-tag" id="mt-4">Python Rules Engine (L1–L5) · DeepSeek-7B mid-zone (L6 only) · SageMaker</div>
+            <div class="agent-call" id="ac-4">🤖 Orchestrator → tool:policy_waterfall_engine</div>
+            <div class="data-line" id="d4-1"><span class="dl-key">L1 NPA check</span><span class="dl-val green">PASS · npa_flag = FALSE</span></div>
+            <div class="data-line" id="d4-2"><span class="dl-key">L2 DPD 90+ L24M</span><span class="dl-val green">PASS · max_dpd = 0</span></div>
+            <div class="data-line" id="d4-3"><span class="dl-key">L3 DPD 60 L18M</span><span class="dl-val green">PASS · max_dpd = 0</span></div>
+            <div class="data-line" id="d4-4"><span class="dl-key">L4 Negative flags</span><span class="dl-val green">PASS · bounce=0, no fraud</span></div>
+            <div class="data-line" id="d4-5"><span class="dl-key">L5 Enquiry spike</span><span class="dl-val amber">PASS · 3 enq (threshold=5)</span></div>
+            <div class="data-line" id="d4-6"><span class="dl-key">L6 Exposure check</span><span class="dl-val green">PASS · Python rule · no AI assist</span></div>
+            <div class="data-line" id="d4-7"><span class="dl-key">policy_result</span><span class="dl-val green">APPROVED</span></div>
+            <div class="data-line" id="d4-8"><span class="dl-key">approved_segment</span><span class="dl-val green">Segment B · Salaried Premium</span></div>
+            <div class="data-line" id="d4-9"><span class="dl-key">ai_assisted_flag</span><span class="dl-val green">FALSE (all layers deterministic)</span></div>
+            <div class="validator-line" id="vl-4">
+              🛡 AUDIT STAMP · reason_code per layer · RBI DLG compliant
+            </div>
+            <div class="dict-row" id="dr-4">
+              <span class="dk">policy_result</span><span class="dk">approved_segment</span>
+              <span class="dk">policy_limitations{}</span><span class="dk">ai_assisted_flag</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector" id="conn-4">
+        <div class="conn-line" id="connline-4"></div>
+        <div class="conn-dot" id="conndot-4"></div>
+      </div>
+
+      <!-- STEP 5 -->
+      <div class="step-card" id="card-5">
+        <div class="step-header" onclick="toggleCard(5)">
+          <div class="step-num s-indigo">05</div>
+          <div>
+            <div class="step-title">Decision Layers — Selection + Serviceability + Offer</div>
+            <div class="step-sub">Sequential gates · Prospect Calculator · Final offer</div>
+          </div>
+          <div class="step-status status-waiting" id="status-5">WAITING</div>
+        </div>
+        <div class="step-body" id="body-5">
+          <div class="step-body-inner">
+            <div class="model-tag" id="mt-5">Selection API · Serviceability Tool · Consent API · Prospect Calculator API</div>
+            <div class="agent-call" id="ac-5">🤖 Orchestrator → tool:selection_api | tool:serviceability_check | tool:consent_api | tool:prospect_calculator</div>
+            <div class="data-line" id="d5-1"><span class="dl-key">selection_1.1</span><span class="dl-val green">PASS · risk_band=2, policy=APPROVED</span></div>
+            <div class="data-line" id="d5-2"><span class="dl-key">serviceability_1.2</span><span class="dl-val green">PASS · not neg-profile, not neg-area</span></div>
+            <div class="data-line" id="d5-3"><span class="dl-key">contactibility_1.3</span><span class="dl-val green">PASS · zone_score=10K, mobile active</span></div>
+            <div class="data-line" id="d5-4"><span class="dl-key">offer_amount</span><span class="dl-val green">₹7,50,000</span></div>
+            <div class="data-line" id="d5-5"><span class="dl-key">offer_tenure</span><span class="dl-val green">48 months</span></div>
+            <div class="data-line" id="d5-6"><span class="dl-key">offer_irr</span><span class="dl-val amber">11.75% p.a.</span></div>
+            <div class="data-line" id="d5-7"><span class="dl-key">offer_emi</span><span class="dl-val amber">₹19,640 / month</span></div>
+            <div class="data-line" id="d5-8"><span class="dl-key">processing_fee</span><span class="dl-val amber">₹11,250 (1.5%)</span></div>
+            <div class="dict-row" id="dr-5">
+              <span class="dk">selected</span><span class="dk">serviceable</span><span class="dk">contactible</span>
+              <span class="dk">offer_amount</span><span class="dk">offer_tenure</span><span class="dk">offer_irr</span><span class="dk">offer_emi</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="connector" id="conn-5">
+        <div class="conn-line" id="connline-5"></div>
+        <div class="conn-dot" id="conndot-5"></div>
+      </div>
+
+      <!-- STEP 6 FINAL -->
+      <div class="step-card" id="card-6">
+        <div class="step-header" onclick="toggleCard(6)">
+          <div class="step-num s-green">06</div>
+          <div>
+            <div class="step-title">Final Decision + Audit Log</div>
+            <div class="step-sub">Offer stamped · S3 KMS · Immutable audit pack · Mobile push</div>
+          </div>
+          <div class="step-status status-waiting" id="status-6">WAITING</div>
+        </div>
+        <div class="step-body" id="body-6">
+          <div class="step-body-inner">
+            <div class="model-tag" id="mt-6">S3 KMS · Redis flush · Audit pack · Mobile notification</div>
+            <div class="agent-call" id="ac-6">🤖 Orchestrator → tool:stamp_decision | tool:write_audit_s3 | tool:push_notification</div>
+            <div class="data-line" id="d6-1"><span class="dl-key">DECISION</span><span class="dl-val green">✓ APPROVED</span></div>
+            <div class="data-line" id="d6-2"><span class="dl-key">offer_to_customer</span><span class="dl-val green">₹7,50,000 · 48M · 11.75%</span></div>
+            <div class="data-line" id="d6-3"><span class="dl-key">emi_commitment</span><span class="dl-val amber">₹19,640 / month (FOIR 0.38)</span></div>
+            <div class="data-line" id="d6-4"><span class="dl-key">audit_pack_written</span><span class="dl-val green">S3 KMS · case_id: PL-2025-884732</span></div>
+            <div class="data-line" id="d6-5"><span class="dl-key">model_versions_pinned</span><span class="dl-val purple">mistral-v2.1 | deepseek-v1.4 | llama3-v1.2</span></div>
+            <div class="data-line" id="d6-6"><span class="dl-key">total_agent_calls</span><span class="dl-val">7 · all validated · 0 hallucinations flagged</span></div>
+            <div class="data-line" id="d6-7"><span class="dl-key">journey_time</span><span class="dl-val green">~42 seconds end-to-end</span></div>
+            <div class="data-line" id="d6-8"><span class="dl-key">push_notification</span><span class="dl-val green">SENT → Rahul Sharma · Mobile App</span></div>
+            <div class="validator-line" id="vl-6" style="color:var(--green)">
+              ✓ FULL AUDIT PACK · Bureau PDF · Banking PDF · Sal Slip JSON · Policy trace · Decision log
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- end steps -->
+  </div><!-- end flow-col -->
+
+  <!-- RIGHT PANEL -->
+  <div class="panel-col">
+    <div class="panel-title">📦 LIVE CASE DICT · Redis</div>
+    <div class="panel-step-name" id="panelStepName">
+      <div class="panel-dot"></div>
+      <span id="panelStepText">Awaiting journey start...</span>
+    </div>
+    <div class="dict-dump" id="dictDump">
+      <span style="color:var(--muted)">// case dict will populate here</span>
+    </div>
+    <div class="panel-log">
+      <div class="log-title">AGENT CALL LOG</div>
+      <div id="logContainer"></div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ─── DATA ───────────────────────────────────────────────────────────────────
+const STEPS = [
+  {
+    id: 1, cardId: 'card-1', bodyId: 'body-1', statusId: 'status-1',
+    connId: 'conn-1', connlineId: 'connline-1', conndotId: 'conndot-1',
+    color: 'cyan', activeCls: 'active',
+    name: 'Step 01 · Application + KYC + Sal Slip + Address',
+    dataLines: ['d1-1','d1-2','d1-3','d1-4','d1-5','d1-6','d1-7','d1-8','d1-9','d1-10','d1-11','d1-12','d1-13'],
+    validator: 'vl-1', dict: 'dr-1', model: 'mt-1', agent: 'ac-1',
+    logs: [
+      { cls: '', msg: 'tool:karza_kyc → PAN ABCPS1234R verified' },
+      { cls: 'success', msg: 'tool:epfo_verify → Infosys 36M employment confirmed' },
+      { cls: 'agent-log', msg: 'agent:sal_slip_analyzer (LLaMA-3) → gross ₹1.08L extracted' },
+      { cls: 'agent-log', msg: 'agent:address_tagger (TinyBERT) → zone 10K · Whitefield' },
+      { cls: 'success', msg: 'validator PASS · all checks cleared' },
+    ],
+    dictKeys: [
+      ['customer_name', '"Rahul Sharma"', ''],
+      ['pan', '"ABCPS1234R"', ''],
+      ['loan_amount_req', '₹8,00,000', 'a'],
+      ['tenure_req', '48 months', 'a'],
+      ['declared_income', '₹95,000/mo', 'g'],
+      ['kyc_verified', 'TRUE', 'g'],
+      ['employment_verified', 'TRUE · 36M', 'g'],
+      ['sal_gross', '₹1,08,000', 'g'],
+      ['sal_net', '₹87,500', 'g'],
+      ['address_zone_score', '10K · Whitefield', 'g'],
+    ]
+  },
+  {
+    id: '2a', cardId: 'card-2a', bodyId: 'body-2a', statusId: 'status-2a',
+    connId: null, connlineId: null, conndotId: null,
+    color: 'purple', activeCls: 'active-purple',
+    name: 'Step 2A · Bureau Fetch + DeepSeek Analyzer',
+    dataLines: ['d2a-1','d2a-2','d2a-3','d2a-4','d2a-5','d2a-6','d2a-7','d2a-8','d2a-9'],
+    validator: 'vl-2a', dict: 'dr-2a', model: 'mt-2a', agent: 'ac-2a',
+    logs: [
+      { cls: '', msg: 'tool:cibil_fetch → 762 score · 8 tradelines returned' },
+      { cls: 'agent-log', msg: 'agent:bureau_analyzer (DeepSeek-7B) → processing tradelines' },
+      { cls: 'success', msg: 'bureau_risk_grade = B+ · conf 0.88' },
+      { cls: 'success', msg: 'validator PASS · DPD match ✓ · no hallucination' },
+    ],
+    dictKeys: [
+      ['cibil_score', '762', 'g'],
+      ['max_dpd_l24m', '0', 'g'],
+      ['npa_flag', 'FALSE', 'g'],
+      ['enq_count_l6m', '3', 'a'],
+      ['total_exposure', '₹4.2L', 'a'],
+      ['bureau_risk_grade', 'B+', 'g'],
+      ['bureau_persona', 'Emerging Salaried', 'p'],
+    ]
+  },
+  {
+    id: '2b', cardId: 'card-2b', bodyId: 'body-2b', statusId: 'status-2b',
+    connId: 'conn-2', connlineId: 'connline-2', conndotId: 'conndot-2',
+    color: 'green', activeCls: 'active-green',
+    name: 'Step 2B · Banking Fetch + BERT + DeepSeek Analyzer',
+    dataLines: ['d2b-1','d2b-2','d2b-3','d2b-4','d2b-5','d2b-6','d2b-7','d2b-8','d2b-9'],
+    validator: 'vl-2b', dict: 'dr-2b', model: 'mt-2b', agent: 'ac-2b',
+    logs: [
+      { cls: '', msg: 'tool:cbs_fetch → 847 txns · 12M · quality 0.91' },
+      { cls: 'agent-log', msg: 'agent:txn_tagger (BERT-base) → 40 categories assigned' },
+      { cls: '', msg: 'tool:feature_eng_100 → 100 features computed' },
+      { cls: 'agent-log', msg: 'agent:banking_analyzer (DeepSeek-7B) → 7-param report' },
+      { cls: 'success', msg: 'validator PASS · salary confirmed · dq 0.91 ✓' },
+    ],
+    dictKeys: [
+      ['salary_income_detected', '₹1,06,200 avg', 'g'],
+      ['existing_emi_debits', '₹12,400/mo', 'a'],
+      ['bounce_count_l12m', '0', 'g'],
+      ['affluence_band', 'B', 'g'],
+      ['cashflow_consistency', 'HIGH', 'g'],
+      ['negative_flags', 'NONE', 'g'],
+      ['spend_category', 'Moderate Urban', 'p'],
+    ]
+  },
+  {
+    id: 3, cardId: 'card-3', bodyId: 'body-3', statusId: 'status-3',
+    connId: 'conn-3', connlineId: 'connline-3', conndotId: 'conndot-3',
+    color: 'amber', activeCls: 'active',
+    name: 'Step 03 · ML Scorecard + Affluence + Policy Features',
+    dataLines: ['d3-1','d3-2','d3-3','d3-4','d3-5','d3-6'],
+    validator: null, dict: 'dr-3', model: 'mt-3', agent: 'ac-3',
+    logs: [
+      { cls: '', msg: 'tool:scorecard_bre → pd_score 0.042 · Band 2' },
+      { cls: '', msg: 'tool:affluence_bre → segment B · value 68.4' },
+      { cls: '', msg: 'tool:policy_feature_creator → 47 features created' },
+    ],
+    dictKeys: [
+      ['pd_score', '0.042', 'g'],
+      ['risk_band', 'Band 2/7', 'g'],
+      ['affluence_value', '68.4', 'g'],
+      ['affluence_segment', 'B', 'g'],
+      ['foir_computed', '0.38', 'a'],
+      ['policy_features', '{47 keys}', ''],
+    ]
+  },
+  {
+    id: 4, cardId: 'card-4', bodyId: 'body-4', statusId: 'status-4',
+    connId: 'conn-4', connlineId: 'connline-4', conndotId: 'conndot-4',
+    color: 'red', activeCls: 'active',
+    name: 'Step 04 · Policy Waterfall · All layers PASS',
+    dataLines: ['d4-1','d4-2','d4-3','d4-4','d4-5','d4-6','d4-7','d4-8','d4-9'],
+    validator: 'vl-4', dict: 'dr-4', model: 'mt-4', agent: 'ac-4',
+    logs: [
+      { cls: 'success', msg: 'L1 NPA → PASS' },
+      { cls: 'success', msg: 'L2 DPD 90+ L24M → PASS' },
+      { cls: 'success', msg: 'L3 DPD 60 L18M → PASS' },
+      { cls: 'success', msg: 'L4 Negative flags → PASS' },
+      { cls: 'warn', msg: 'L5 Enquiry=3 · threshold=5 → PASS (monitor)' },
+      { cls: 'success', msg: 'L6 Exposure → PASS · Python deterministic' },
+      { cls: 'success', msg: 'policy_result = APPROVED · Segment B' },
+    ],
+    dictKeys: [
+      ['policy_result', 'APPROVED', 'g'],
+      ['approved_segment', 'Segment B', 'g'],
+      ['decline_layer', 'N/A', 'g'],
+      ['ai_assisted_flag', 'FALSE', 'g'],
+    ]
+  },
+  {
+    id: 5, cardId: 'card-5', bodyId: 'body-5', statusId: 'status-5',
+    connId: 'conn-5', connlineId: 'connline-5', conndotId: 'conndot-5',
+    color: 'indigo', activeCls: 'active',
+    name: 'Step 05 · Selection + Serviceability + Offer',
+    dataLines: ['d5-1','d5-2','d5-3','d5-4','d5-5','d5-6','d5-7','d5-8'],
+    validator: null, dict: 'dr-5', model: 'mt-5', agent: 'ac-5',
+    logs: [
+      { cls: 'success', msg: 'tool:selection_api → PASS · risk_band=2' },
+      { cls: 'success', msg: 'tool:serviceability_check → PASS · clean profile' },
+      { cls: 'success', msg: 'tool:consent_api → PASS · contactible' },
+      { cls: 'success', msg: 'tool:prospect_calculator → ₹7.5L · 11.75% · EMI ₹19,640' },
+    ],
+    dictKeys: [
+      ['selected', 'TRUE', 'g'],
+      ['serviceable', 'TRUE', 'g'],
+      ['contactible', 'TRUE', 'g'],
+      ['offer_amount', '₹7,50,000', 'g'],
+      ['offer_tenure', '48 months', 'g'],
+      ['offer_irr', '11.75% p.a.', 'a'],
+      ['offer_emi', '₹19,640/mo', 'a'],
+      ['processing_fee', '₹11,250', 'a'],
+    ]
+  },
+  {
+    id: 6, cardId: 'card-6', bodyId: 'body-6', statusId: 'status-6',
+    connId: null, connlineId: null, conndotId: null,
+    color: 'green', activeCls: 'active-green',
+    name: 'Step 06 · ✓ APPROVED · Audit Stamped · Push Sent',
+    dataLines: ['d6-1','d6-2','d6-3','d6-4','d6-5','d6-6','d6-7','d6-8'],
+    validator: 'vl-6', dict: null, model: 'mt-6', agent: 'ac-6',
+    logs: [
+      { cls: 'success', msg: 'tool:stamp_decision → APPROVED stamped' },
+      { cls: 'success', msg: 'tool:write_audit_s3 → case PL-2025-884732 written' },
+      { cls: 'success', msg: 'model versions pinned · mistral-v2.1 · deepseek-v1.4' },
+      { cls: 'success', msg: 'tool:push_notification → sent to Rahul Sharma' },
+      { cls: 'success', msg: '✓ JOURNEY COMPLETE · 42s · 0 hallucinations' },
+    ],
+    dictKeys: [
+      ['DECISION', '✓ APPROVED', 'g'],
+      ['offer_amount', '₹7,50,000', 'g'],
+      ['offer_irr', '11.75%', 'a'],
+      ['offer_emi', '₹19,640/mo', 'a'],
+      ['audit_pack', 'S3 · PL-2025-884732', 'g'],
+      ['journey_time', '~42 seconds', 'g'],
+    ]
+  }
+];
+
+// ─── STATE ───────────────────────────────────────────────────────────────────
+let currentStep = -1;
+let paused = false;
+let animTimeout = null;
+let dictState = {};
+let stepDone = {};
+
+function getSpeed() {
+  return parseFloat(document.getElementById('speedSelect').value);
+}
+function delay(ms) {
+  return new Promise(res => { animTimeout = setTimeout(res, ms / getSpeed()); });
+}
+
+// ─── PANEL ───────────────────────────────────────────────────────────────────
+function updatePanel(stepName) {
+  document.getElementById('panelStepText').textContent = stepName;
+}
+function addDictKeys(keys) {
+  const dump = document.getElementById('dictDump');
+  keys.forEach(([k, v, cls], i) => {
+    dictState[k] = { v, cls };
+  });
+  renderDict();
+}
+function renderDict() {
+  const dump = document.getElementById('dictDump');
+  dump.innerHTML = Object.entries(dictState).map(([k, {v, cls}]) =>
+    `<div class="new-entry"><span class="dk2">${k}</span>: <span class="dv ${cls}">${v}</span></div>`
+  ).join('');
+}
+function addLog(msg, cls) {
+  const lc = document.getElementById('logContainer');
+  const t = new Date().toLocaleTimeString('en-IN', {hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  const el = document.createElement('div');
+  el.className = `log-entry ${cls}`;
+  el.innerHTML = `<span class="lt">${t}</span><span class="lm">${msg}</span>`;
+  lc.appendChild(el);
+  lc.scrollTop = lc.scrollHeight;
+}
+
+// ─── STEP ANIMATION ──────────────────────────────────────────────────────────
+async function animateStep(step) {
+  const card = document.getElementById(step.cardId);
+  const body = document.getElementById(step.bodyId);
+  const status = document.getElementById(step.statusId);
+
+  // activate card
+  card.classList.add(step.activeCls);
+  status.className = 'step-status status-running';
+  status.textContent = 'RUNNING';
+  updatePanel(step.name);
+
+  // open body
+  body.classList.add('open');
+
+  // show model tag
+  const mt = document.getElementById(step.model);
+  if (mt) { mt.classList.add('visible'); await delay(200); }
+
+  // show agent call
+  const ac = document.getElementById(step.agent);
+  if (ac) { ac.classList.add('visible'); await delay(300); }
+
+  // show data lines one by one
+  for (let i = 0; i < step.dataLines.length; i++) {
+    if (paused) await waitUnpause();
+    const el = document.getElementById(step.dataLines[i]);
+    if (el) el.classList.add('visible');
+    addDictKeys([]);
+    await delay(180);
+  }
+
+  // add dict keys to panel
+  addDictKeys(step.dictKeys || []);
+
+  // validator
+  if (step.validator) {
+    await delay(200);
+    const vl = document.getElementById(step.validator);
+    if (vl) vl.classList.add('visible');
+  }
+
+  // dict row
+  if (step.dict) {
+    await delay(200);
+    const dr = document.getElementById(step.dict);
+    if (dr) dr.classList.add('visible');
+  }
+
+  // logs
+  for (const log of step.logs) {
+    await delay(280);
+    addLog(log.msg, log.cls);
+  }
+
+  await delay(400);
+  status.className = 'step-status status-done';
+  status.textContent = 'DONE ✓';
+  card.classList.remove(step.activeCls);
+  card.classList.add('done');
+  stepDone[step.id] = true;
+}
+
+async function animateConnector(connlineId, conndotId) {
+  if (!connlineId) return;
+  const line = document.getElementById(connlineId);
+  const dot  = document.getElementById(conndotId);
+  if (line) line.classList.add('active');
+  if (dot)  { dot.classList.add('traveling'); await delay(600); dot.classList.remove('traveling'); }
+}
+
+function waitUnpause() {
+  return new Promise(res => {
+    const check = setInterval(() => { if (!paused) { clearInterval(check); res(); } }, 100);
+  });
+}
+
+// ─── MAIN JOURNEY ────────────────────────────────────────────────────────────
+async function startJourney() {
+  if (currentStep >= 0) return;
+  currentStep = 0;
+  updateProgress(0);
+
+  // Step 1
+  await animateStep(STEPS[0]);
+  updateProgress(14);
+  await animateConnector('connline-1', 'conndot-1');
+  await delay(200);
+
+  // Steps 2A + 2B parallel (simulate with slight offset)
+  updateProgress(28);
+  animateStep(STEPS[1]); // 2a — don't await
+  await delay(300);
+  await animateStep(STEPS[2]); // 2b — await this one (slightly longer)
+  // wait for 2a to finish too (it's faster, usually done)
+  await delay(200);
+  updateProgress(45);
+  await animateConnector('connline-2', 'conndot-2');
+  await delay(200);
+
+  // Step 3
+  await animateStep(STEPS[3]);
+  updateProgress(60);
+  await animateConnector('connline-3', 'conndot-3');
+  await delay(200);
+
+  // Step 4
+  await animateStep(STEPS[4]);
+  updateProgress(74);
+  await animateConnector('connline-4', 'conndot-4');
+  await delay(200);
+
+  // Step 5
+  await animateStep(STEPS[5]);
+  updateProgress(88);
+  await animateConnector('connline-5', 'conndot-5');
+  await delay(200);
+
+  // Step 6
+  await animateStep(STEPS[6]);
+  updateProgress(100);
+
+  addLog('✓ AGENTIC JOURNEY COMPLETE', 'success');
+  document.getElementById('panelStepText').textContent = '✓ APPROVED · Rahul Sharma · ₹7.5L · 11.75%';
+}
+
+function updateProgress(pct) {
+  document.getElementById('progressFill').style.width = pct + '%';
+  document.getElementById('progressPct').textContent = pct + '%';
+}
+
+function togglePause() {
+  paused = !paused;
+  document.querySelector('.btn-pause').textContent = paused ? '▶ RESUME' : '⏸ PAUSE';
+}
+
+function resetJourney() {
+  paused = false;
+  currentStep = -1;
+  dictState = {};
+  stepDone = {};
+  clearTimeout(animTimeout);
+
+  // reset cards
+  document.querySelectorAll('.step-card').forEach(c => {
+    c.className = 'step-card';
+  });
+  document.querySelectorAll('.step-status').forEach(s => {
+    s.className = 'step-status status-waiting';
+    s.textContent = 'WAITING';
+  });
+  document.querySelectorAll('.step-body').forEach(b => b.classList.remove('open'));
+  document.querySelectorAll('.data-line, .validator-line, .agent-call, .model-tag, .dict-row').forEach(el => el.classList.remove('visible'));
+  document.querySelectorAll('.conn-line').forEach(l => l.classList.remove('active'));
+  document.querySelectorAll('.conn-dot').forEach(d => d.classList.remove('traveling'));
+
+  // reset panel
+  document.getElementById('dictDump').innerHTML = '<span style="color:var(--muted)">// case dict will populate here</span>';
+  document.getElementById('logContainer').innerHTML = '';
+  document.getElementById('panelStepText').textContent = 'Awaiting journey start...';
+  document.getElementById('progressFill').style.width = '0%';
+  document.getElementById('progressPct').textContent = '0%';
+  document.querySelector('.btn-pause').textContent = '⏸ PAUSE';
+}
+
+function toggleCard(id) {
+  const body = document.getElementById('body-' + id);
+  if (body) body.classList.toggle('open');
+}
+</script>
+</body>
+</html>

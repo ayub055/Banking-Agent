@@ -1,0 +1,1279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Technical Architecture — Agentic Financial Analysis System</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: #f8fafc; color: #1e293b; }
+
+        /* HEADER */
+        .arch-header {
+            background: linear-gradient(135deg, #1e1b4b 0%, #312e81 100%);
+            color: white; padding: 22px 40px;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .arch-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 3px; }
+        .arch-header .subtitle { font-size: 12px; color: #a5b4fc; }
+        .stat-pills { display: flex; gap: 10px; flex-wrap: wrap; }
+        .stat-pill {
+            background: rgba(255,255,255,0.12); border: 1px solid rgba(165,180,252,0.4);
+            border-radius: 20px; padding: 5px 14px; font-size: 11px; color: #e0e7ff;
+            position: relative; cursor: default;
+        }
+        .stat-pill:hover { background: rgba(255,255,255,0.2); }
+        .pill-tip {
+            display: none; position: absolute; top: calc(100% + 10px); right: 0;
+            background: #0f172a; border: 1px solid #334155;
+            border-radius: 8px; padding: 12px 14px; z-index: 200;
+            min-width: 200px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+            white-space: normal; line-height: 1;
+        }
+        .stat-pill:hover .pill-tip { display: block; }
+        .pill-tip-title {
+            font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px;
+            color: #818cf8; margin-bottom: 8px;
+        }
+        .pill-tip-item {
+            display: flex; align-items: center; gap: 7px;
+            font-size: 11px; color: #cbd5e1; padding: 3px 0;
+            border-bottom: 1px solid #1e293b;
+        }
+        .pill-tip-item:last-child { border-bottom: none; }
+        .pill-tip-dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; background: #6366f1; }
+        .pill-tip-dot.green  { background: #10b981; }
+        .pill-tip-dot.orange { background: #f97316; }
+        .pill-tip-dot.violet { background: #8b5cf6; }
+        .pill-tip-dot.amber  { background: #f59e0b; }
+        .pill-tip-dot.cyan   { background: #06b6d4; }
+        .pill-tip-sub { font-size: 10px; color: #64748b; margin-left: auto; }
+
+        /* MODEL LEGEND */
+        .model-legend {
+            background: #fff; border-bottom: 1px solid #e2e8f0;
+            padding: 9px 40px; display: flex; gap: 20px; align-items: center; flex-wrap: wrap;
+        }
+        .ml-title { font-size: 11px; font-weight: 700; color: #64748b; }
+        .model-pill {
+            display: flex; align-items: center; gap: 6px; background: #f8fafc;
+            border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px 10px; font-size: 11px;
+        }
+        .model-pill strong { font-size: 11px; }
+        .mdot { width: 9px; height: 9px; border-radius: 50%; }
+        .mdot-p { background: #f97316; }
+        .mdot-e { background: #10b981; }
+        .mdot-s { background: #8b5cf6; }
+        .ml-note { margin-left: auto; font-size: 10px; color: #94a3b8; font-family: monospace; }
+
+        /* TABS */
+        .tabs { background: #fff; border-bottom: 2px solid #e2e8f0; padding: 0 40px; display: flex; }
+        .tab-btn {
+            padding: 13px 22px; border: none; border-bottom: 3px solid transparent;
+            background: none; font-size: 13px; font-weight: 500; color: #94a3b8;
+            cursor: pointer; transition: all 0.2s; margin-bottom: -2px;
+        }
+        .tab-btn:hover { color: #1e293b; }
+        .tab-btn.active { color: #1e1b4b; border-bottom-color: #6366f1; font-weight: 700; }
+
+        /* PANELS */
+        .panel { display: none; padding: 28px 40px; max-width: 1380px; margin: 0 auto; }
+        .panel.active { display: block; }
+
+        /* COMPONENT CARDS */
+        .comp {
+            background: #fff; border-radius: 8px; padding: 12px 16px;
+            box-shadow: 0 2px 8px rgba(99,102,241,0.08); border: 2px solid transparent;
+            transition: all 0.2s; position: relative;
+        }
+        .comp:hover { box-shadow: 0 4px 16px rgba(99,102,241,0.16); transform: translateY(-1px); }
+        .comp-title { font-size: 13px; font-weight: 700; margin-bottom: 5px; }
+        .comp-desc { font-size: 11px; color: #475569; line-height: 1.5; }
+        .comp-file {
+            font-size: 10px; color: #94a3b8; font-family: monospace;
+            margin-top: 6px; padding-top: 5px; border-top: 1px solid #f1f5f9;
+        }
+
+        /* color variants */
+        .c-blue   { border-color: #6366f1; background: linear-gradient(135deg,#e0e7ff,#eef2ff); }
+        .c-red    { border-color: #f43f5e; background: linear-gradient(135deg,#fff1f2,#ffe4e6); }
+        .c-green  { border-color: #10b981; background: linear-gradient(135deg,#d1fae5,#ecfdf5); }
+        .c-yellow { border-color: #fbbf24; background: linear-gradient(135deg,#fffbeb,#fef9c3); }
+        .c-orange { border-color: #f59e0b; background: linear-gradient(135deg,#fff7ed,#ffedd5); }
+        .c-purple { border-color: #8b5cf6; background: linear-gradient(135deg,#ede9fe,#f5f3ff); }
+        .c-gray   { border-color: #94a3b8; background: linear-gradient(135deg,#f1f5f9,#f8fafc); }
+        .c-teal   { border-color: #06b6d4; background: linear-gradient(135deg,#cffafe,#ecfeff); }
+        .c-dark   { border-color: #0f172a; background: linear-gradient(135deg,#1e1b4b,#312e81); color: #fff; }
+        .c-dark .comp-title { color: #fde68a; }
+        .c-dark .comp-desc { color: #c7d2fe; }
+        .c-dark .comp-file { color: #818cf8; border-top-color: #3730a3; }
+
+        /* MODEL BADGES */
+        .mbadge {
+            display: inline-flex; align-items: center; gap: 4px;
+            padding: 2px 9px; border-radius: 20px; font-size: 10px; font-weight: 700;
+        }
+        .mb-p { background: #fff7ed; color: #c2410c; border: 1px solid #f97316; }
+        .mb-e { background: #d1fae5; color: #065f46; border: 1px solid #10b981; }
+        .mb-s { background: #ede9fe; color: #4c1d95; border: 1px solid #8b5cf6; }
+
+        /* TOOLTIPS */
+        .has-tip { cursor: pointer; }
+        .tip-box {
+            display: none; position: absolute; bottom: calc(100% + 8px); left: 50%;
+            transform: translateX(-50%); background: #0f172a; color: #e2e8f0;
+            padding: 8px 12px; border-radius: 6px; font-size: 11px; white-space: nowrap;
+            z-index: 100; min-width: 220px; line-height: 1.7; box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }
+        .tip-box::after {
+            content: ''; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+            border: 6px solid transparent; border-top-color: #0f172a;
+        }
+        .has-tip:hover .tip-box { display: block; }
+        .tt-f { color: #fde68a; font-family: monospace; }
+        .tt-fn { color: #6ee7b7; font-family: monospace; }
+
+        /* CONNECTORS */
+        .conn-row { display: flex; align-items: center; padding: 3px 0; margin-left: 86px; }
+        .conn-line {
+            width: 2px; height: 28px; flex-shrink: 0;
+            background: linear-gradient(to bottom, #cbd5e1, #6366f1); position: relative;
+        }
+        .conn-line::after {
+            content: ''; position: absolute; bottom: -5px; left: -4px;
+            border: 5px solid transparent; border-top-color: #6366f1;
+        }
+        .conn-text { font-size: 10px; color: #dc2626; font-style: italic; font-weight: 600; margin-left: 8px; }
+
+        /* FLOW STAGE */
+        .flow-stage { display: flex; align-items: stretch; gap: 16px; margin-bottom: 0; }
+        .stage-lbl { width: 70px; display: flex; align-items: flex-start; padding-top: 12px; flex-shrink: 0; }
+        .stage-badge {
+            background: #1e1b4b; color: white; font-size: 10px; font-weight: 700;
+            padding: 3px 7px; border-radius: 4px; white-space: nowrap;
+        }
+        .stage-content { flex: 1; }
+
+        /* TOOL CHIPS */
+        .tool-chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 8px; }
+        .tc { background: #d1fae5; border: 1px solid #10b981; color: #065f46; font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 10px; font-family: monospace; }
+        .tc-r { background: #fff7ed; border: 1px solid #f59e0b; color: #92400e; }
+
+        /* THINK BLOCK */
+        .think-box {
+            background: #faf5ff; border: 1px dashed #8b5cf6; border-radius: 5px;
+            padding: 7px 10px; margin-top: 7px; font-size: 10px; color: #4c1d95; line-height: 1.5;
+        }
+
+        /* BRANCH */
+        .branch-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .branch-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+
+        /* DATA CARDS */
+        .data-row { display: flex; gap: 14px; flex-wrap: wrap; }
+        .data-card {
+            background: #fff; border: 2px solid #6366f1; border-radius: 8px;
+            padding: 12px 16px; flex: 1; min-width: 140px; text-align: center;
+        }
+        .data-icon { font-size: 22px; margin-bottom: 5px; }
+        .data-name { font-size: 12px; font-weight: 700; color: #3730a3; }
+        .data-desc { font-size: 10px; color: #64748b; margin-top: 2px; line-height: 1.4; }
+
+        /* SECTION HEADER */
+        .sec-hdr { display: flex; align-items: center; gap: 10px; margin-bottom: 18px; }
+        .sec-hdr h2 { font-size: 17px; font-weight: 700; }
+        .sec-tag { background: #e0e7ff; color: #3730a3; font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 12px; border: 1px solid #6366f1; }
+        .sec-lbl { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 2px; color: #94a3b8; margin-bottom: 10px; }
+
+        /* REPORT PATH COLUMNS */
+        .report-paths { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 18px; }
+        .report-path { display: flex; flex-direction: column; }
+        .path-hdr { text-align: center; font-weight: 700; font-size: 13px; padding: 10px; border-radius: 6px 6px 0 0; color: white; }
+        .ph-cust { background: #059669; }
+        .ph-bur  { background: #4f46e5; }
+        .ph-comb { background: #7c3aed; }
+        .path-body {
+            border: 2px solid #e2e8f0; border-top: none; border-radius: 0 0 6px 6px;
+            padding: 12px; display: flex; flex-direction: column; gap: 0; background: #f8fafc; flex: 1;
+        }
+        .path-step {
+            background: white; border: 1px solid #e2e8f0; border-radius: 6px;
+            padding: 10px 12px; font-size: 11px; position: relative;
+        }
+        .path-step-title { font-weight: 700; font-size: 12px; margin-bottom: 4px; }
+        .path-arrow { display: flex; justify-content: center; padding: 4px 0; color: #cbd5e1; font-size: 13px; }
+
+        /* PRINCIPLES — FRIENDLY CARDS */
+        .friendly-intro { font-size: 14px; color: #475569; max-width: 700px; margin: 0 0 24px; line-height: 1.7; }
+        .fc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+        .fc-card { background: #fff; border-radius: 10px; padding: 20px 18px; box-shadow: 0 2px 8px rgba(99,102,241,0.07); border: 1px solid #e2e8f0; display: flex; flex-direction: column; gap: 10px; }
+        .fc-icon { width: 46px; height: 46px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 22px; flex-shrink: 0; }
+        .fc-headline { font-size: 13px; font-weight: 700; color: #1e293b; line-height: 1.4; }
+        .fc-body { font-size: 12px; color: #64748b; line-height: 1.65; }
+        .fc-tag { font-size: 10px; font-weight: 600; padding: 2px 8px; border-radius: 10px; width: fit-content; }
+
+        /* TECH TOGGLE */
+        .tech-toggle-btn { display: flex; align-items: center; gap: 10px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 18px; cursor: pointer; font-size: 13px; font-weight: 600; color: #334155; width: 100%; margin: 28px 0 0; text-align: left; }
+        .tech-toggle-btn:hover { background: #f1f5f9; border-color: #6366f1; }
+        .tgl-arrow { font-size: 10px; transition: transform 0.25s; display: inline-block; color: #6366f1; }
+        .tech-toggle-btn.open .tgl-arrow { transform: rotate(90deg); }
+        .tech-section { display: none; margin-top: 16px; }
+        .tech-section.open { display: block; }
+
+        /* DECISIONS ACCORDION */
+        .da-grid { display: flex; flex-direction: column; gap: 8px; margin-bottom: 28px; }
+        .da-item { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }
+        .da-header { background: #f8fafc; padding: 12px 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; user-select: none; }
+        .da-header:hover { background: #f1f5f9; }
+        .da-title { font-size: 12px; font-weight: 700; color: #1e293b; }
+        .da-num { font-size: 10px; font-weight: 600; color: #6366f1; background: #e0e7ff; border-radius: 50%; width: 22px; height: 22px; display: inline-flex; align-items: center; justify-content: center; margin-right: 10px; flex-shrink: 0; }
+        .da-chevron { color: #94a3b8; font-size: 11px; transition: transform 0.2s; }
+        .da-item.open .da-chevron { transform: rotate(180deg); }
+        .da-body { display: none; padding: 14px 16px 16px; font-size: 12px; color: #475569; line-height: 1.65; background: #fff; border-top: 1px solid #f1f5f9; }
+        .da-item.open .da-body { display: block; }
+        .da-tradeoff { margin-top: 10px; padding: 9px 12px; background: #fef9c3; border-radius: 5px; font-size: 11px; color: #78350f; border-left: 3px solid #f59e0b; }
+
+        /* PRINCIPLES GRID (legacy — kept for old p-card references just in case) */
+        .principles-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+        .p-card { background: #fff; border-radius: 8px; padding: 14px; box-shadow: 0 2px 6px rgba(99,102,241,0.08); border-top: 3px solid #6366f1; }
+        .p-card h4 { font-size: 12px; font-weight: 700; margin-bottom: 5px; color: #1e293b; }
+        .p-card p { font-size: 11px; color: #475569; line-height: 1.5; }
+
+        /* TABLE */
+        table { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(99,102,241,0.08); }
+        th { background: #1e1b4b; color: white; padding: 11px 16px; text-align: left; font-size: 12px; }
+        td { padding: 10px 16px; border-bottom: 1px solid #f1f5f9; color: #374151; }
+        tr:nth-child(even) td { background: #f8fafc; }
+        td code { font-family: monospace; font-size: 10px; color: #94a3b8; }
+
+        /* UTILITIES */
+        .mb-16 { margin-bottom: 16px; }
+        .mb-20 { margin-bottom: 20px; }
+        .mb-28 { margin-bottom: 28px; }
+        .mt-24 { margin-top: 24px; }
+        .mt-28 { margin-top: 28px; }
+        .flex { display: flex; }
+        .items-center { align-items: center; }
+        .justify-between { justify-content: space-between; }
+        .gap-8 { gap: 8px; }
+        .gap-16 { gap: 16px; }
+        .text-center { text-align: center; }
+    </style>
+</head>
+<body>
+
+<header class="arch-header">
+    <div>
+        <h1>Agentic Financial Analysis System</h1>
+        <div class="subtitle">Technical Architecture · LangChain + Ollama · 5-Stage Pipeline · Banking + Bureau Data</div>
+    </div>
+    <div class="stat-pills">
+
+        <div class="stat-pill">28+ Tools
+            <div class="pill-tip" style="min-width:260px;">
+                <div class="pill-tip-title">Analytics Tools</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> debit_total <span class="pill-tip-sub">total debits</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> get_total_income <span class="pill-tip-sub">credit sum</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> spending_by_category</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> top_categories</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> cash_flow · balance_trend</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> income_stability · detect_anomalies</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> lender_profile · spending_in_range</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> credit_statistics · debit_statistics</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> category_presence_lookup</div>
+                <div class="pill-tip-title" style="margin-top:10px;">Bureau Tools</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot cyan"></div> bureau_overview · bureau_cc_info</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot cyan"></div> bureau_loan_info · bureau_delinquency</div>
+                <div class="pill-tip-title" style="margin-top:10px;">Report Generators</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot amber"></div> generate_customer_report</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot amber"></div> generate_bureau_report</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot amber"></div> generate_combined_report</div>
+            </div>
+        </div>
+
+        <div class="stat-pill">3 Report Types
+            <div class="pill-tip">
+                <div class="pill-tip-title">Report Types</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> Customer Report <span class="pill-tip-sub">banking</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot" style="background:#4f46e5;"></div> Bureau Report <span class="pill-tip-sub">credit</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot violet"></div> Combined Report <span class="pill-tip-sub">both</span></div>
+            </div>
+        </div>
+
+        <div class="stat-pill">LLM Models
+            <div class="pill-tip">
+                <div class="pill-tip-title">Active Models</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot orange"></div> mistral <span class="pill-tip-sub">intent parser</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> llama3.2 <span class="pill-tip-sub">explainer + summaries</span></div>
+                <div class="pill-tip-title" style="margin-top:10px;">Optional Upgrade</div>
+                <div class="pill-tip-item" style="opacity:0.65;"><div class="pill-tip-dot violet"></div> deepseek-r1:14b <span class="pill-tip-sub">richer summaries</span></div>
+            </div>
+        </div>
+
+        <div class="stat-pill">40+ Findings
+            <div class="pill-tip" style="min-width:230px;">
+                <div class="pill-tip-title">Finding Severities</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot" style="background:#ef4444;"></div> high_risk <span class="pill-tip-sub">DPD, bounces, betting</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot amber"></div> moderate_risk <span class="pill-tip-sub">high util, new PLs</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot orange"></div> concern <span class="pill-tip-sub">enquiries, gaps</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot" style="background:#94a3b8;"></div> neutral <span class="pill-tip-sub">informational</span></div>
+                <div class="pill-tip-item"><div class="pill-tip-dot green"></div> positive <span class="pill-tip-sub">SIP, pre-closure, FD</span></div>
+                <div class="pill-tip-title" style="margin-top:10px;">Interaction Signals</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot violet"></div> Dual leverage</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot violet"></div> Loan stacking</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot violet"></div> Rejection pattern</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot violet"></div> Late payer signal</div>
+            </div>
+        </div>
+
+        <div class="stat-pill">Pydantic v2 Schemas
+            <div class="pill-tip" style="min-width:220px;">
+                <div class="pill-tip-title">Typed Schemas</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot"></div> ParsedIntent</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot"></div> ToolResult</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot"></div> TransactionInsights</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot"></div> CustomerReport</div>
+                <div class="pill-tip-item"><div class="pill-tip-dot"></div> BureauReport</div>
+            </div>
+        </div>
+
+    </div>
+</header>
+
+<div class="model-legend">
+    <span class="ml-title">LLM Tiers:</span>
+    <div class="model-pill"><div class="mdot mdot-p"></div> <strong>mistral</strong> — intent parsing · fast JSON</div>
+    <div class="model-pill"><div class="mdot mdot-e"></div> <strong>llama3.2</strong> — explainer + report summaries <span style="background:#d1fae5; color:#065f46; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700; margin-left:4px;">current</span></div>
+    <div class="model-pill" style="opacity:0.75;"><div class="mdot mdot-s"></div> <strong>deepseek-r1:14b</strong> — richer summaries, chain-of-thought <span style="background:#ede9fe; color:#4c1d95; border-radius:10px; padding:1px 7px; font-size:10px; font-weight:700; margin-left:4px;">optional upgrade</span></div>
+    <span class="ml-note">config/settings.py → PARSER_MODEL / EXPLAINER_MODEL / SUMMARY_MODEL</span>
+</div>
+
+<div class="tabs">
+    <button class="tab-btn active" onclick="showTab('overview', this)">System Overview</button>
+    <button class="tab-btn" onclick="showTab('query', this)">Query Pipeline</button>
+    <button class="tab-btn" onclick="showTab('report', this)">Report Pipeline</button>
+    <button class="tab-btn" onclick="showTab('principles', this)">Design Principles</button>
+</div>
+
+<!-- ============================================================
+     TAB 1: SYSTEM OVERVIEW
+============================================================ -->
+<div id="tab-overview" class="panel active">
+    <div class="sec-hdr"><h2>System Overview</h2><span class="sec-tag">Full Architecture</span></div>
+
+    <!-- Data Sources -->
+    <div class="sec-lbl mb-16">DATA SOURCES</div>
+    <div class="data-row mb-28">
+        <div class="data-card">
+            <div class="data-icon">🏦</div>
+            <div class="data-name">Raw Banking Transactions</div>
+            <div class="data-desc">Customer bank statement data<br>Debits, credits, narrations, dates</div>
+        </div>
+        <div class="data-card">
+            <div class="data-icon">📊</div>
+            <div class="data-name">Raw Bureau Tradelines</div>
+            <div class="data-desc">Credit bureau data<br>DPD history, loan amounts, repayment</div>
+        </div>
+        <div class="data-card" style="opacity:0.65; border-style:dashed;">
+            <div class="data-icon">💳</div>
+            <div class="data-name" style="color:#6366f1;">Raw CC Transactions</div>
+            <div class="data-desc">Credit card transaction data<br><em style="color:#8b5cf6;">Upcoming</em></div>
+        </div>
+    </div>
+
+    <!-- Two-column: Query pipeline left, Report pipeline right -->
+    <div style="display:grid; grid-template-columns: 5fr 4fr; gap: 32px;">
+
+        <!-- LEFT: Query Pipeline -->
+        <div>
+            <div class="sec-lbl mb-16">QUERY PIPELINE — app.py → Streamlit</div>
+
+            <div class="comp c-dark text-center mb-16">
+                <span style="color:#fde68a; font-weight:700;">User Query</span>
+                <span style="color:#aaa; font-size:11px; margin-left:8px;">"Generate report for customer X" · "Show spending by category"</span>
+            </div>
+
+            <div style="display:flex; justify-content:center; padding:4px 0; margin-bottom:0;">
+                <div style="width:2px; height:24px; background:#cbd5e1;"></div>
+            </div>
+
+            <div class="comp c-blue has-tip mb-16">
+                <div class="tip-box">
+                    <div class="tt-f">pipeline/core/intent_parser.py</div>
+                    <div class="tt-fn">IntentParser.parse(query) → ParsedIntent</div>
+                    <div style="margin-top:4px; color:#aaa; font-size:10px;">LLM called in JSON mode — deterministic output structure</div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="comp-title">Stage 1 — Intent Parser</div>
+                    <div class="mbadge mb-p"><div class="mdot mdot-p"></div> mistral</div>
+                </div>
+                <div class="comp-desc">Parses free-text to <strong>ParsedIntent</strong> schema: intent_type, customer_id, category, date range. Uses mistral in JSON mode — no think tags, always valid JSON.</div>
+                <div class="comp-file">intent_parser.py → IntentParser.parse()</div>
+            </div>
+
+            <div style="display:flex; justify-content:center; padding:4px 0;">
+                <div style="width:2px; height:24px; background:#cbd5e1; position:relative;">
+                    <span style="position:absolute; left:6px; top:6px; font-size:10px; color:#dc2626; font-style:italic; font-weight:600; white-space:nowrap;">ParsedIntent</span>
+                </div>
+            </div>
+
+            <div class="comp c-blue has-tip mb-16">
+                <div class="tip-box">
+                    <div class="tt-f">pipeline/core/planner.py</div>
+                    <div class="tt-fn">QueryPlanner.plan(intent) → List[ToolCall]</div>
+                    <div style="margin-top:4px; color:#aaa; font-size:10px;">INTENT_TOOL_MAP — deterministic routing</div>
+                </div>
+                <div class="comp-title">Stage 2 — Query Planner</div>
+                <div class="comp-desc">Routes ParsedIntent to tools via <strong>INTENT_TOOL_MAP</strong>. Validates customer_id in loaded data. Analytics intents → Executor. Report intents → Report Orchestrators.</div>
+                <div class="comp-file">planner.py → QueryPlanner.plan()</div>
+            </div>
+
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px; margin-bottom:16px;">
+                <div>
+                    <div style="text-align:center; font-size:10px; color:#dc2626; font-style:italic; padding:4px 0;">↓ analytics intent</div>
+                    <div class="comp c-red has-tip">
+                        <div class="tip-box">
+                            <div class="tt-f">pipeline/core/executor.py</div>
+                            <div class="tt-fn">ToolExecutor.execute(plan) → List[ToolResult]</div>
+                        </div>
+                        <div class="comp-title">Stage 3 — Tool Executor</div>
+                        <div class="comp-desc">Executes analytics tools on Pandas DataFrames. Fail-soft: errors captured in ToolResult.error, not raised.</div>
+                        <div class="tool-chips">
+                            <span class="tc">debit_total</span><span class="tc">cash_flow</span>
+                            <span class="tc">top_categories</span><span class="tc">+25 more</span>
+                        </div>
+                        <div class="comp-file">executor.py · tools/analytics.py</div>
+                    </div>
+                </div>
+                <div>
+                    <div style="text-align:center; font-size:10px; color:#dc2626; font-style:italic; padding:4px 0;">↓ report intent</div>
+                    <div class="comp c-orange has-tip">
+                        <div class="tip-box">
+                            <div class="tt-f">pipeline/reports/report_orchestrator.py</div>
+                            <div class="tt-fn">generate_customer_report_pdf(cust_id)</div>
+                            <div class="tt-fn">generate_bureau_report(crn)</div>
+                        </div>
+                        <div class="comp-title">Report Orchestrators</div>
+                        <div class="comp-desc">Routes to Customer/Bureau/Combined builders. Manages _REPORT_CACHE keyed by (cust_id, period).</div>
+                        <div class="tool-chips">
+                            <span class="tc tc-r">customer_report</span>
+                            <span class="tc tc-r">bureau_report</span>
+                            <span class="tc tc-r">combined_report</span>
+                        </div>
+                        <div class="comp-file">report_orchestrator.py</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:center; padding:4px 0;">
+                <div style="width:2px; height:24px; background:#cbd5e1;"></div>
+            </div>
+
+            <div class="comp c-dark has-tip mb-16">
+                <div class="tip-box" style="background:#0f172a;">
+                    <div class="tt-f">pipeline/core/explainer.py</div>
+                    <div class="tt-fn">ResponseExplainer.stream_explain(intent, results)</div>
+                    <div style="margin-top:4px; color:#aaa; font-size:10px;">stream_strip_think() handles &lt;think&gt; blocks transparently</div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="comp-title">Stage 4 — Response Explainer</div>
+                    <div class="mbadge mb-e"><div class="mdot mdot-e"></div> llama3.2</div>
+                </div>
+                <div class="comp-desc">Generates streaming natural language response from tool results + report data. Uses <strong>stream_strip_think()</strong> — buffers until &lt;/think&gt;, logs reasoning to DEBUG, yields clean answer chunks.</div>
+                <div class="comp-file">explainer.py → utils/llm_utils.py → stream_strip_think()</div>
+            </div>
+
+            <div style="display:flex; justify-content:center; padding:4px 0; margin-bottom:12px;">
+                <div style="width:2px; height:24px; background:#cbd5e1;"></div>
+            </div>
+
+            <div class="comp c-yellow text-center">
+                <div class="comp-title">Streamlit UI</div>
+                <div class="comp-desc">Streaming chat response · PDF download links · HTML report preview · Pipeline stage indicators</div>
+                <div class="comp-file">app.py · templates/</div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Report Pipeline summary + Utilities -->
+        <div>
+            <div class="sec-lbl mb-16">REPORT PIPELINE — async, per report type</div>
+
+            <!-- Customer -->
+            <div style="background:#d1fae5; border:2px solid #10b981; border-radius:8px; padding:14px; margin-bottom:14px;">
+                <div style="font-weight:700; color:#065f46; font-size:12px; margin-bottom:10px;">📄 Customer Report</div>
+                <div class="comp c-teal has-tip mb-16" style="margin-bottom:8px;">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/reports/customer_report_builder.py</div>
+                        <div class="tt-fn">detect_events(transactions, salary_info)</div>
+                        <div style="margin-top:4px; color:#aaa; font-size:10px;">KEYWORD_RULES + multi-step detectors on narrations</div>
+                    </div>
+                    <div class="comp-title" style="font-size:12px;">Event Detector</div>
+                    <div class="comp-desc">KEYWORD_RULES: salary, EMI, rent, SIP, PF, BNPL. Multi-step: salary_gap, self_transfer_post_salary, post_salary_routing, cheque_bounce.</div>
+                    <div class="comp-file">event_detector.py → detect_events()</div>
+                </div>
+                <div style="font-size:10px; color:#888; text-align:center; padding:2px 0;">↓ events + account role</div>
+                <div style="background:#fff; border:1px solid #e2e8f0; border-radius:6px; padding:9px 11px; margin-bottom:8px; font-size:11px;">
+                    <div style="font-weight:700; margin-bottom:3px; font-size:11px;">Account Quality Classifier</div>
+                    PRIMARY · CONDUIT · DISTRIBUTION HUB · SECONDARY · SAVINGS-ORIENTED
+                </div>
+                <div style="font-size:10px; color:#888; text-align:center; padding:2px 0;">↓</div>
+                <div style="background:#ede9fe; border:1px solid #8b5cf6; border-radius:6px; padding:9px 11px; margin-bottom:4px;">
+                    <div class="flex items-center justify-between" style="margin-bottom:4px;">
+                        <div style="font-weight:700; font-size:11px;">LLM Narratives</div>
+                        <div class="mbadge mb-s" style="font-size:9px;"><div class="mdot mdot-e"></div> llama3.2 <span style="font-size:9px; opacity:0.7;">(deepseek optional)</span></div>
+                    </div>
+                    <div style="font-size:11px; color:#555;">customer_persona · customer_review (2 paragraphs). strip_think() logs reasoning.</div>
+                    <div class="comp-file">report_summary_chain.py</div>
+                </div>
+            </div>
+
+            <!-- Bureau -->
+            <div style="background:#e0e7ff; border:2px solid #6366f1; border-radius:8px; padding:14px; margin-bottom:14px;">
+                <div style="font-weight:700; color:#3730a3; font-size:12px; margin-bottom:10px;">📊 Bureau Report</div>
+                <div style="background:#e0e7ff; border:1px solid #6366f1; border-radius:6px; padding:9px 11px; margin-bottom:8px; font-size:11px;">
+                    <div style="font-weight:700; margin-bottom:3px;">Bureau Feature Pipeline</div>
+                    Extraction (per loan type) → Aggregation (portfolio) → Tradeline Features
+                    <div class="comp-file">bureau_feature_extractor.py · bureau_feature_aggregator.py</div>
+                </div>
+                <div style="font-size:10px; color:#888; text-align:center; padding:2px 0;">↓</div>
+                <div style="background:#fffbeb; border:1px solid #fbbf24; border-radius:6px; padding:9px 11px; margin-bottom:8px; font-size:11px;">
+                    <div style="font-weight:700; margin-bottom:3px;">Key Findings + Interaction Signals</div>
+                    40+ rules · dual leverage · loan stacking · rejection pattern · late payer
+                    <div class="comp-file">key_findings.py · _compute_interaction_signals()</div>
+                </div>
+                <div style="font-size:10px; color:#888; text-align:center; padding:2px 0;">↓</div>
+                <div style="background:#ede9fe; border:1px solid #8b5cf6; border-radius:6px; padding:9px 11px; margin-bottom:4px;">
+                    <div class="flex items-center justify-between" style="margin-bottom:4px;">
+                        <div style="font-weight:700; font-size:11px;">Bureau LLM Narrative</div>
+                        <div class="mbadge mb-s" style="font-size:9px;"><div class="mdot mdot-e"></div> llama3.2 <span style="font-size:9px; opacity:0.7;">(deepseek optional)</span></div>
+                    </div>
+                    <div style="font-size:11px; color:#555;">bureau_review: Portfolio Overview + Behavioral Insights. strip_think() logs reasoning.</div>
+                    <div class="comp-file">report_summary_chain.py → generate_bureau_review()</div>
+                </div>
+            </div>
+
+            <!-- Combined -->
+            <div style="background:#ede9fe; border:2px solid #8b5cf6; border-radius:8px; padding:14px; margin-bottom:14px;">
+                <div style="font-weight:700; color:#4c1d95; font-size:12px; margin-bottom:8px;">🔗 Combined Report</div>
+                <div style="background:#ede9fe; border:1px solid #8b5cf6; border-radius:6px; padding:9px 11px; margin-bottom:4px;">
+                    <div class="flex items-center justify-between" style="margin-bottom:4px;">
+                        <div style="font-weight:700; font-size:11px;">Combined LLM Summary</div>
+                        <div class="mbadge mb-s" style="font-size:9px;"><div class="mdot mdot-e"></div> llama3.2 <span style="font-size:9px; opacity:0.7;">(deepseek optional)</span></div>
+                    </div>
+                    <div style="font-size:11px; color:#555;">Synthesises banking + bureau into holistic creditworthiness assessment. Reuses cached sub-reports.</div>
+                    <div class="comp-file">report_summary_chain.py → generate_combined_executive_summary()</div>
+                </div>
+            </div>
+
+            <!-- PDF Renderers -->
+            <div class="comp c-gray has-tip">
+                <div class="tip-box">
+                    <div class="tt-f">pipeline/renderers/pdf_renderer.py</div>
+                    <div class="tt-fn">render_report_html() · render_report_pdf()</div>
+                    <div class="tt-f" style="margin-top:4px;">templates/customer_report.html · bureau_report.html</div>
+                </div>
+                <div class="comp-title">PDF + HTML Renderers</div>
+                <div class="comp-desc">fpdf2 (ReportPDF base) + Jinja2 templates. Chart.js for interactive charts. Outputs: customer/bureau/combined .pdf + .html</div>
+                <div class="comp-file">pdf_renderer.py · bureau_pdf_renderer.py · combined_report_renderer.py</div>
+            </div>
+
+            <!-- Shared utilities -->
+            <div class="sec-lbl mb-16 mt-24">SHARED UTILITIES</div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+                <div class="comp c-gray has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">utils/llm_utils.py</div>
+                        <div class="tt-fn">strip_think(text, label) → str</div>
+                        <div class="tt-fn">stream_strip_think(chunks) → Iterator</div>
+                    </div>
+                    <div class="comp-title" style="font-size:12px;">strip_think()</div>
+                    <div class="comp-desc">Strips &lt;think&gt;...&lt;/think&gt; from deepseek-r1 output. Logs think content to DEBUG. Streaming variant buffers until closing tag.</div>
+                    <div class="comp-file">utils/llm_utils.py</div>
+                </div>
+                <div class="comp c-gray has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/reports/report_orchestrator.py</div>
+                        <div class="tt-fn">_REPORT_CACHE: Dict[(cust_id, period), report]</div>
+                    </div>
+                    <div class="comp-title" style="font-size:12px;">Report Cache</div>
+                    <div class="comp-desc">In-memory cache. Combined report reuses cached sub-reports without re-running builders. Key = (customer_id, period).</div>
+                    <div class="comp-file">report_orchestrator.py → _REPORT_CACHE</div>
+                </div>
+                <div class="comp c-gray has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">config/category_loader.py</div>
+                        <div class="tt-fn">get_all_category_keys() · resolve_category_alias()</div>
+                    </div>
+                    <div class="comp-title" style="font-size:12px;">Category Loader</div>
+                    <div class="comp-desc">43 canonical categories. LRU-cached. Fuzzy alias resolution. Shared by Intent Parser + Tool Executor.</div>
+                    <div class="comp-file">config/category_loader.py</div>
+                </div>
+                <div class="comp c-gray has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/core/audit.py</div>
+                        <div class="tt-fn">AuditLog.log(stage, payload)</div>
+                    </div>
+                    <div class="comp-title" style="font-size:12px;">Audit Logger</div>
+                    <div class="comp-desc">Logs every pipeline stage: query, intent, plan, tool calls, results. Non-blocking — failures silently ignored.</div>
+                    <div class="comp-file">audit.py · pipeline/core/orchestrator.py</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     TAB 2: QUERY PIPELINE
+============================================================ -->
+<div id="tab-query" class="panel">
+    <div class="sec-hdr"><h2>Query Pipeline</h2><span class="sec-tag">5 Stages · app.py → Streamlit</span></div>
+
+    <div style="max-width:820px; margin:0 auto;">
+
+        <!-- INPUT -->
+        <div class="flow-stage mb-20">
+            <div class="stage-lbl"><span class="stage-badge">INPUT</span></div>
+            <div class="stage-content">
+                <div class="comp c-dark text-center">
+                    <div style="color:#f1c40f; font-weight:700; font-size:14px;">User Query</div>
+                    <div style="color:#aaa; font-size:11px; margin-top:4px;">"Generate banking report for CUST001" · "Show spending by category" · "Bureau report for CRN-123"</div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-row"><div class="conn-line"></div></div>
+
+        <!-- STAGE 1 -->
+        <div class="flow-stage mb-20">
+            <div class="stage-lbl"><span class="stage-badge">STAGE 1</span></div>
+            <div class="stage-content">
+                <div class="comp c-blue has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/core/intent_parser.py</div>
+                        <div class="tt-fn">class IntentParser</div>
+                        <div class="tt-fn">def parse(query: str) → ParsedIntent</div>
+                        <div style="margin-top:5px; color:#aaa; font-size:10px;">mistral called in JSON mode — guaranteed valid structure, no think tags</div>
+                    </div>
+                    <div class="flex items-center justify-between mb-16" style="margin-bottom:8px;">
+                        <div class="comp-title" style="font-size:14px;">Intent Parser</div>
+                        <div class="mbadge mb-p"><div class="mdot mdot-p"></div> mistral · t=0 · JSON mode</div>
+                    </div>
+                    <div class="comp-desc" style="font-size:12px;">Transforms free-text to structured <strong>ParsedIntent</strong>. LLM called in JSON mode — always valid JSON, no think tag corruption. mistral chosen for speed and JSON reliability.</div>
+                    <div style="background:#e0e7ff; border-radius:5px; padding:9px; margin-top:9px; font-size:10px; font-family:monospace; color:#3730a3; line-height:1.8;">
+                        ParsedIntent {<br>
+                        &nbsp;&nbsp;raw_query: str,<br>
+                        &nbsp;&nbsp;intent_type: "spending" | "income" | "report" | "bureau" | ...,<br>
+                        &nbsp;&nbsp;customer_id: str | None,<br>
+                        &nbsp;&nbsp;category: str | None,<br>
+                        &nbsp;&nbsp;start_date: date | None, end_date: date | None<br>
+                        }
+                    </div>
+                    <div class="comp-file">intent_parser.py · schemas/intent.py · config/settings.py → PARSER_MODEL</div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-row"><div class="conn-line"></div><div class="conn-text">ParsedIntent schema</div></div>
+
+        <!-- STAGE 2 -->
+        <div class="flow-stage mb-20">
+            <div class="stage-lbl"><span class="stage-badge">STAGE 2</span></div>
+            <div class="stage-content">
+                <div class="comp c-blue has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/core/planner.py</div>
+                        <div class="tt-fn">class QueryPlanner</div>
+                        <div class="tt-fn">def plan(intent: ParsedIntent) → List[ToolCall]</div>
+                        <div style="margin-top:5px; color:#aaa; font-size:10px;">INTENT_TOOL_MAP — deterministic routing, validates customer against loaded DataFrame</div>
+                    </div>
+                    <div class="comp-title" style="font-size:14px; margin-bottom:8px;">Query Planner</div>
+                    <div class="comp-desc" style="font-size:12px;">Routes ParsedIntent to tools via <strong>INTENT_TOOL_MAP</strong>. Validates customer_id against loaded DataFrame index. Report intents bypass Executor entirely and go directly to Report Orchestrators.</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-top:10px; font-size:11px;">
+                        <div style="background:#e0e7ff; border-radius:4px; padding:8px;">
+                            <div style="font-weight:700; color:#3730a3; margin-bottom:3px;">Analytics path →</div>
+                            debit_total, spending_by_category, cash_flow, balance_trend, income_stability, detect_anomalies, lender_profile, bureau_* tools...
+                        </div>
+                        <div style="background:#fff7ed; border-radius:4px; padding:8px;">
+                            <div style="font-weight:700; color:#92400e; margin-bottom:3px;">Report path →</div>
+                            generate_customer_report, generate_bureau_report, generate_combined_report → report_orchestrator.py
+                        </div>
+                    </div>
+                    <div class="comp-file">planner.py → INTENT_TOOL_MAP · QueryPlanner.plan()</div>
+                </div>
+            </div>
+        </div>
+
+        <div style="display:flex; gap:30%; margin-left:86px; margin-bottom:6px; font-size:10px; color:#dc2626; font-style:italic; font-weight:600;">
+            <span>↙ analytics plan</span><span>↘ report intent</span>
+        </div>
+
+        <!-- STAGE 3: two branches -->
+        <div class="flow-stage mb-20">
+            <div class="stage-lbl"><span class="stage-badge">STAGE 3</span></div>
+            <div class="stage-content branch-2">
+                <div class="comp c-red has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/core/executor.py</div>
+                        <div class="tt-fn">class ToolExecutor</div>
+                        <div class="tt-fn">def execute(plan) → List[ToolResult]</div>
+                        <div style="margin-top:5px; color:#aaa; font-size:10px;">Each tool wrapped in try/except — ToolResult.success=False on error</div>
+                    </div>
+                    <div class="comp-title" style="margin-bottom:8px;">Tool Executor</div>
+                    <div class="comp-desc">Executes planned tools on Pandas DataFrames. Returns <strong>List[ToolResult]</strong>. Fail-soft: errors captured in ToolResult.error, never raised to caller.</div>
+                    <div class="tool-chips">
+                        <span class="tc">debit_total</span><span class="tc">get_total_income</span>
+                        <span class="tc">spending_by_category</span><span class="tc">top_categories</span>
+                        <span class="tc">cash_flow</span><span class="tc">balance_trend</span>
+                        <span class="tc">detect_anomalies</span><span class="tc">income_stability</span>
+                        <span class="tc">lender_profile</span><span class="tc">category_presence_lookup</span>
+                        <span class="tc">bureau_cc_info</span><span class="tc">bureau_loan_info</span>
+                        <span class="tc">bureau_delinquency</span><span class="tc">+15 more</span>
+                    </div>
+                    <div class="comp-file">executor.py · tools/analytics.py · tools/bureau.py</div>
+                </div>
+                <div class="comp c-orange has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/reports/report_orchestrator.py</div>
+                        <div class="tt-fn">generate_customer_report_pdf(cust_id)</div>
+                        <div class="tt-fn">generate_bureau_report(crn)</div>
+                        <div class="tt-fn">generate_combined_report(crn, cust_id)</div>
+                    </div>
+                    <div class="comp-title" style="margin-bottom:8px;">Report Orchestrators</div>
+                    <div class="comp-desc">Heavy async pipeline: data gather → feature extract → event detect → LLM narrate → render. Results cached in <strong>_REPORT_CACHE</strong>. Returns PDF path + structured data dict.</div>
+                    <div class="tool-chips">
+                        <span class="tc tc-r">generate_customer_report</span>
+                        <span class="tc tc-r">generate_bureau_report</span>
+                        <span class="tc tc-r">generate_combined_report</span>
+                    </div>
+                    <div class="comp-file">report_orchestrator.py → _REPORT_CACHE[(cust_id, period)]</div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-row"><div class="conn-line"></div><div class="conn-text">List[ToolResult] + PDF path</div></div>
+
+        <!-- OPTIONAL: Transaction Insights -->
+        <div class="flow-stage mb-20">
+            <div class="stage-lbl" style="padding-top:12px;"><span class="stage-badge" style="background:#95a5a6;">OPT</span></div>
+            <div class="stage-content">
+                <div class="comp c-teal has-tip">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/insights/transaction_flow.py</div>
+                        <div class="tt-fn">get_transaction_insights_if_needed(intent, results) → TransactionInsights | None</div>
+                    </div>
+                    <div class="comp-title" style="margin-bottom:6px;">Transaction Insights (optional enrichment)</div>
+                    <div class="comp-desc">If tool results contain transaction data, runs pattern detection (salary regularity, recurring transfers). Attaches <strong>TransactionInsights</strong> to explainer context. Skipped for simple queries.</div>
+                    <div class="comp-file">transaction_flow.py · schemas/transaction_insights.py</div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-row"><div class="conn-line"></div><div class="conn-text">enriched context</div></div>
+
+        <!-- STAGE 4 -->
+        <div class="flow-stage mb-20">
+            <div class="stage-lbl"><span class="stage-badge">STAGE 4</span></div>
+            <div class="stage-content">
+                <div class="comp c-dark has-tip">
+                    <div class="tip-box" style="background:#0f172a;">
+                        <div class="tt-f">pipeline/core/explainer.py</div>
+                        <div class="tt-fn">class ResponseExplainer</div>
+                        <div class="tt-fn">def stream_explain(intent, results, insights) → Iterator[str]</div>
+                        <div style="margin-top:5px; color:#aaa; font-size:10px;">stream_strip_think() buffers until &lt;/think&gt;, logs to DEBUG, yields answer chunks</div>
+                    </div>
+                    <div class="flex items-center justify-between" style="margin-bottom:8px;">
+                        <div class="comp-title" style="font-size:14px;">Response Explainer</div>
+                        <div class="mbadge mb-e"><div class="mdot mdot-e"></div> llama3.2 · t=0 · seed=42</div>
+                    </div>
+                    <div class="comp-desc" style="font-size:12px;">Formats tool results + insights into prompt via <strong>EXPLAINER_PROMPT</strong>. Streams output token by token for real-time display. Calls <code style="background:#3d5166;padding:1px 5px;border-radius:3px;font-size:10px;">stream_strip_think()</code> — transparent think block handling.</div>
+                    <div class="think-box" style="background:#1e1b4b; border-color:#8b5cf6; color:#c4b5fd;">
+                        <strong>stream_strip_think()</strong> — buffers chunks until &lt;/think&gt; found → logs think content to DEBUG → yields remainder and all subsequent chunks normally. Falls back after 200 chars if no &lt;think&gt; tag detected.
+                    </div>
+                    <div class="comp-file" style="margin-top:8px;">explainer.py · utils/llm_utils.py · config/settings.py → EXPLAINER_MODEL</div>
+                </div>
+            </div>
+        </div>
+        <div class="conn-row"><div class="conn-line"></div><div class="conn-text">streaming tokens</div></div>
+
+        <!-- OUTPUT -->
+        <div class="flow-stage">
+            <div class="stage-lbl"><span class="stage-badge">OUTPUT</span></div>
+            <div class="stage-content">
+                <div class="comp c-yellow">
+                    <div class="comp-title" style="font-size:14px; margin-bottom:8px;">Streamlit UI</div>
+                    <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; font-size:11px;">
+                        <div style="background:#fff8e1; border-radius:4px; padding:8px; border:1px solid #f9e79f;">
+                            <div style="font-weight:700; margin-bottom:3px;">💬 Chat Response</div>
+                            Streaming natural language explanation
+                        </div>
+                        <div style="background:#fff8e1; border-radius:4px; padding:8px; border:1px solid #f9e79f;">
+                            <div style="font-weight:700; margin-bottom:3px;">📄 PDF Download</div>
+                            Report links (customer / bureau / combined)
+                        </div>
+                        <div style="background:#fff8e1; border-radius:4px; padding:8px; border:1px solid #f9e79f;">
+                            <div style="font-weight:700; margin-bottom:3px;">🌐 HTML Preview</div>
+                            Interactive report with Chart.js charts
+                        </div>
+                    </div>
+                    <div class="comp-file">app.py · templates/</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     TAB 3: REPORT PIPELINE
+============================================================ -->
+<div id="tab-report" class="panel">
+    <div class="sec-hdr"><h2>Report Pipeline</h2><span class="sec-tag">3 Report Types · deepseek-r1:14b for all LLM summaries</span></div>
+
+    <div class="comp c-orange text-center mb-20" style="max-width:500px; margin:0 auto 16px;">
+        <div class="comp-title">Report Orchestrators</div>
+        <div class="comp-desc">Entry for all report generation. Routes to builder. Manages _REPORT_CACHE. Returns dict + PDF path.</div>
+        <div class="comp-file">pipeline/reports/report_orchestrator.py</div>
+    </div>
+    <div style="font-size:11px; color:#dc2626; font-style:italic; text-align:center; margin-bottom:16px;">↓ split by report type</div>
+
+    <div class="report-paths">
+
+        <!-- CUSTOMER -->
+        <div class="report-path">
+            <div class="path-hdr ph-cust">📄 Customer Report</div>
+            <div class="path-body">
+                <div class="path-step has-tip" style="border-left:3px solid #10b981;">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/reports/customer_report_builder.py</div>
+                        <div class="tt-fn">build_customer_report(customer_id, months)</div>
+                        <div class="tt-fn">_build_data_summary() · _get_cashflow_block()</div>
+                    </div>
+                    <div class="path-step-title">Data Gathering</div>
+                    <div class="path-step-desc">Filters rgs.csv by customer_id + date range. Extracts salary, EMI, rent, spending categories, cashflow, merchant stats from Pandas DataFrame.</div>
+                    <div class="comp-file" style="margin-top:4px;">customer_report_builder.py → _build_data_summary()</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step has-tip" style="border-left:3px solid #06b6d4;">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/reports/customer_report_builder.py</div>
+                        <div class="tt-fn">detect_events(transactions, salary_info) → List[Event]</div>
+                        <div style="margin-top:4px; color:#aaa; font-size:10px;">Each event: {type, month, amount, narration, severity, implication}</div>
+                    </div>
+                    <div class="path-step-title">Event Detector</div>
+                    <div class="path-step-desc">
+                        <strong>KEYWORD_RULES:</strong> salary, EMI, rent, SIP, PF withdrawal, insurance, EarlySalary BNPL, advance salary<br><br>
+                        <strong>Multi-step detectors:</strong><br>
+                        · salary_gap — salary absent 2+ consecutive months<br>
+                        · self_transfer_post_salary — ≥60% salary transferred same/next day<br>
+                        · post_salary_routing — salary → 2+ recipients within 72h<br>
+                        · loan_redistribution_suspect — lender credit → immediate outflow<br>
+                        · cheque_bounce — MANDATE RETURN / NACH RETURN / DISHONOUR<br><br>
+                        Severities: <strong>[HIGH]</strong> · <strong>[MEDIUM]</strong> · <strong>[POSITIVE]</strong>
+                    </div>
+                    <div class="comp-file">event_detector.py → detect_events()</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #0891b2;">
+                    <div class="path-step-title">Account Quality Classifier</div>
+                    <div class="path-step-desc">
+                        Classifies account behavioral role from transaction patterns:<br><br>
+                        <strong>PRIMARY</strong> — salary received + accumulates (positive net most months)<br>
+                        <strong>CONDUIT</strong> — salary in → single large self-transfer ≥60% within 72h<br>
+                        <strong>DISTRIBUTION HUB</strong> — salary → 2+ distinct recipients &gt;50% within 72h<br>
+                        <strong>SECONDARY / EXPENSE</strong> — no salary, predominantly debit<br>
+                        <strong>SAVINGS-ORIENTED</strong> — consistent positive net, FD/SIP activity<br><br>
+                        Computed metrics: distribution_ratio, self_transfer_ratio, accumulation_score, recipient_diversity_post_salary
+                    </div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #8b5cf6; background:#f9f5ff;">
+                    <div class="flex items-center justify-between" style="margin-bottom:6px;">
+                        <div class="path-step-title">LLM Narratives</div>
+                        <div class="mbadge mb-s" style="font-size:9px;"><div class="mdot mdot-e"></div> llama3.2 <span style="font-size:9px; opacity:0.7;">(deepseek optional)</span></div>
+                    </div>
+                    <div class="path-step-desc">
+                        <strong>customer_persona:</strong> 4-5 line behavioral profile<br>
+                        <strong>customer_review:</strong> 2 paragraphs:<br>
+                        · Para 1 — Financial Overview (income, cashflow, spending, EMI/rent — no events)<br>
+                        · Para 2 — Transaction Events (EVERY detected event: month + amount — none omitted)
+                    </div>
+                    <div class="think-box">
+                        <strong>strip_think()</strong> — removes &lt;think&gt; block, logs reasoning to DEBUG. Answer only in report.
+                    </div>
+                    <div class="comp-file" style="margin-top:4px;">report_summary_chain.py → generate_customer_review() · generate_customer_persona()</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #64748b; background:#f5f5f5;">
+                    <div class="path-step-title">PDF + HTML Renderer</div>
+                    <div class="path-step-desc">fpdf2 (ReportPDF) + Jinja2. Sections: salary, cashflow, category overview, detected events, EMI, rent, merchants, persona, executive review.</div>
+                    <div class="comp-file">pdf_renderer.py · templates/customer_report.html</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- BUREAU -->
+        <div class="report-path">
+            <div class="path-hdr ph-bur">📊 Bureau Report</div>
+            <div class="path-body">
+                <div class="path-step has-tip" style="border-left:3px solid #4f46e5;">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/extractors/bureau_feature_extractor.py</div>
+                        <div class="tt-fn">extract_features_for_loan_type(crn, loan_type)</div>
+                        <div class="tt-f" style="margin-top:4px;">pipeline/extractors/bureau_feature_aggregator.py</div>
+                        <div class="tt-fn">aggregate_portfolio_features(feature_list)</div>
+                        <div class="tt-f" style="margin-top:4px;">pipeline/extractors/tradeline_feature_extractor.py</div>
+                    </div>
+                    <div class="path-step-title">Bureau Feature Pipeline</div>
+                    <div class="path-step-desc">
+                        <strong>Feature Extraction:</strong> per loan type (PL, CC, HL, AL, GL, BL, OD) from dpd_data.csv — max DPD, outstanding balance, overdue, DPD history<br><br>
+                        <strong>Aggregation:</strong> portfolio-level (total exposure, max DPD across all, total outstanding, active vs closed counts)<br><br>
+                        <strong>Tradeline Features:</strong> from tl_features.csv — unsecured_enquiries_12m, new_trades_6m_pl, cc_balance_utilization_pct, pct_missed_payments_18m, months_since_last_trade
+                    </div>
+                    <div class="comp-file">bureau_feature_extractor.py · bureau_feature_aggregator.py · tradeline_feature_extractor.py</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step has-tip" style="border-left:3px solid #f59e0b; background:#fffdf0;">
+                    <div class="tip-box">
+                        <div class="tt-f">pipeline/reports/key_findings.py</div>
+                        <div class="tt-fn">compute_key_findings(report) → List[Finding]</div>
+                        <div class="tt-f" style="margin-top:4px;">pipeline/reports/report_summary_chain.py</div>
+                        <div class="tt-fn">_compute_interaction_signals(report) → List[str]</div>
+                    </div>
+                    <div class="path-step-title">Key Findings + Interaction Signals</div>
+                    <div class="path-step-desc">
+                        <strong>40+ deterministic rules</strong> on bureau features.<br>
+                        Severities: high_risk · moderate_risk · concern · neutral · positive<br><br>
+                        <strong>Interaction Signals (cross-feature):</strong><br>
+                        · Dual leverage — CC util &gt;75% AND PL remaining &gt;60%: "simultaneously maxing revolving and installment credit"<br>
+                        · Loan stacking — ≥2 new PLs AND PL remaining &gt;70%: "new loan opened while previous barely repaid"<br>
+                        · Rejection pattern — enquiries &gt;8 AND low approval ratio: "probable repeated rejections"<br>
+                        · Clean DPD + high util: "credit dependency, not disciplined management"<br>
+                        · Late payer: "0% missed but DPD &gt;0 — consistently paid late"
+                    </div>
+                    <div class="comp-file">key_findings.py · report_summary_chain.py → _compute_interaction_signals()</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #8b5cf6; background:#f9f5ff;">
+                    <div class="flex items-center justify-between" style="margin-bottom:6px;">
+                        <div class="path-step-title">Bureau LLM Narrative</div>
+                        <div class="mbadge mb-s" style="font-size:9px;"><div class="mdot mdot-e"></div> llama3.2 <span style="font-size:9px; opacity:0.7;">(deepseek optional)</span></div>
+                    </div>
+                    <div class="path-step-desc">
+                        <strong>bureau_review:</strong> 2 paragraphs:<br>
+                        · Para 1 — Portfolio Overview (exposure, DPD history, utilization, repayment)<br>
+                        · Para 2 — Behavioral Insights (loan velocity, credit dependency, cross-signal patterns)<br>
+                        Risk tags: [HIGH RISK] · [POSITIVE] · [CAUTION] · [NOTE]<br>
+                        LLM <strong>narrates</strong> pre-computed interaction signals — does not derive them.
+                    </div>
+                    <div class="think-box">
+                        <strong>strip_think()</strong> — deepseek-r1 reasoning logged to DEBUG. Clean narrative only in report.
+                    </div>
+                    <div class="comp-file">report_summary_chain.py → generate_bureau_review()</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #64748b; background:#f5f5f5;">
+                    <div class="path-step-title">Bureau PDF + HTML Renderer</div>
+                    <div class="path-step-desc">BureauReportPDF + Jinja2. Chart.js charts: Portfolio Timeseries, Product Mix (doughnut), DPD Distribution, Enquiry Pattern. Interactive HTML version with expandable sections.</div>
+                    <div class="comp-file">bureau_pdf_renderer.py · templates/bureau_report.html</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COMBINED -->
+        <div class="report-path">
+            <div class="path-hdr ph-comb">🔗 Combined Report</div>
+            <div class="path-body">
+                <div class="path-step" style="border-left:3px solid #8b5cf6;">
+                    <div class="path-step-title">Load / Build Sub-reports</div>
+                    <div class="path-step-desc">
+                        Checks <strong>_REPORT_CACHE</strong> for customer_report (keyed by cust_id + period) and bureau_report (keyed by crn).<br><br>
+                        <strong>Cache hit:</strong> reuses existing — zero recomputation. Sub-reports served from memory.<br>
+                        <strong>Cache miss:</strong> triggers build of missing sub-report first.<br><br>
+                        Both sub-reports must succeed. Combined fails gracefully if either fails.
+                    </div>
+                    <div class="comp-file">report_orchestrator.py → _REPORT_CACHE</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #8b5cf6; background:#f9f5ff;">
+                    <div class="flex items-center justify-between" style="margin-bottom:6px;">
+                        <div class="path-step-title">Combined LLM Summary</div>
+                        <div class="mbadge mb-s" style="font-size:9px;"><div class="mdot mdot-e"></div> llama3.2 <span style="font-size:9px; opacity:0.7;">(deepseek optional)</span></div>
+                    </div>
+                    <div class="path-step-desc">
+                        Synthesises banking + bureau signals into a holistic creditworthiness assessment.<br><br>
+                        <strong>Input:</strong> customer_review + bureau_review + interaction signals + key findings<br>
+                        <strong>Output:</strong> 6-8 line executive assessment with cross-domain inferences:<br>
+                        e.g. "CC utilization at 90% combined with salary redistribution pattern — primary spending account likely elsewhere, credit stress compounded by both revolving and conduit risk."
+                    </div>
+                    <div class="think-box">
+                        <strong>strip_think()</strong> — combined summary benefits most from deepseek-r1 reasoning: synthesises two data domains. Think chain logged to DEBUG for learning.
+                    </div>
+                    <div class="comp-file">report_summary_chain.py → generate_combined_executive_summary()</div>
+                </div>
+                <div class="path-arrow">↓</div>
+
+                <div class="path-step" style="border-left:3px solid #64748b; background:#f5f5f5;">
+                    <div class="path-step-title">Combined PDF + HTML Renderer</div>
+                    <div class="path-step-desc">
+                        Merges customer + bureau reports into single document. Sections:<br>
+                        Banking Summary · Transaction Events · Detected Accounts Quality ·<br>
+                        Bureau Portfolio · Tradeline Details · Executive Summary (combined_summary).<br>
+                        DPD Timeseries + Exposure charts from bureau section.
+                    </div>
+                    <div class="comp-file">combined_report_renderer.py · templates/combined_report.html</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ============================================================
+     TAB 4: DESIGN PRINCIPLES
+============================================================ -->
+<div id="tab-principles" class="panel">
+    <div class="sec-hdr"><h2>Design Principles</h2><span class="sec-tag">Architecture Decisions</span></div>
+
+    <p class="friendly-intro">
+        This system was built for a lending environment where decisions must be <strong>auditable, consistent, and reliable</strong>.
+        A handful of core ideas shape how every component is designed — here's what they mean in plain terms.
+    </p>
+
+    <!-- Friendly cards — 6 principles in plain language -->
+    <div class="fc-grid mb-28">
+
+        <div class="fc-card">
+            <div class="fc-icon" style="background:#e0e7ff;">🎯</div>
+            <div>
+                <div class="fc-headline">AI explains — Python decides</div>
+                <div class="fc-body">Every risk threshold, DPD flag, and utilization signal comes from hardcoded Python rules in <code>config/thresholds.py</code>. The AI only writes the summary in natural language. It never makes a risk call independently. Same inputs always produce the same findings.</div>
+            </div>
+            <div class="fc-tag" style="background:#e0e7ff; color:#3730a3;">Deterministic Core</div>
+        </div>
+
+        <div class="fc-card">
+            <div class="fc-icon" style="background:#d1fae5;">🔒</div>
+            <div>
+                <div class="fc-headline">Customer data never leaves the building</div>
+                <div class="fc-body">All AI models run locally via Ollama — mistral for parsing, llama3.2 for summaries. No transaction or bureau data is sent to OpenAI, Google, or any cloud service. Zero API costs, zero data egress risk.</div>
+            </div>
+            <div class="fc-tag" style="background:#d1fae5; color:#065f46;">Data Privacy</div>
+        </div>
+
+        <div class="fc-card">
+            <div class="fc-icon" style="background:#fce7f3;">🛡️</div>
+            <div>
+                <div class="fc-headline">Reports always complete, even when AI fails</div>
+                <div class="fc-body">Every LLM call is wrapped in try/except. If a model times out or crashes, the report still generates with all data sections — only the AI-written summary is omitted. No single failure can block report delivery.</div>
+            </div>
+            <div class="fc-tag" style="background:#fce7f3; color:#9d174d;">Fail-Soft</div>
+        </div>
+
+        <div class="fc-card">
+            <div class="fc-icon" style="background:#fef3c7;">⚡</div>
+            <div>
+                <div class="fc-headline">Repeat queries return instantly</div>
+                <div class="fc-body">Transaction data is loaded once at process start and cached. Reports are cached by customer + period. Re-running a bureau report for the same customer costs zero computation and zero AI calls — the cached result is returned immediately.</div>
+            </div>
+            <div class="fc-tag" style="background:#fef3c7; color:#92400e;">Multi-Layer Cache</div>
+        </div>
+
+        <div class="fc-card">
+            <div class="fc-icon" style="background:#d1fae5;">⚖️</div>
+            <div>
+                <div class="fc-headline">Every customer analyzed the same way</div>
+                <div class="fc-body">The same 40+ threshold rules apply to every customer with no variation. DPD_HIGH_RISK = 90 days, CC_UTIL_HIGH_RISK = 75% — these are constants, not analyst judgement. Results are reproducible: re-running a report produces identical findings.</div>
+            </div>
+            <div class="fc-tag" style="background:#d1fae5; color:#065f46;">Consistency</div>
+        </div>
+
+        <div class="fc-card">
+            <div class="fc-icon" style="background:#ede9fe;">🔧</div>
+            <div>
+                <div class="fc-headline">Add rules without touching pipeline code</div>
+                <div class="fc-body">Categories (food, rent, betting) live in <code>categories.yaml</code>. Risk thresholds live in <code>thresholds.py</code>. All 7 prompts live in <code>prompts.py</code>. A non-engineer can extend detection coverage by editing config files — no pipeline changes needed.</div>
+            </div>
+            <div class="fc-tag" style="background:#ede9fe; color:#4c1d95;">Configuration-Driven</div>
+        </div>
+
+    </div>
+
+    <!-- Model Selection — always visible -->
+    <div class="sec-hdr"><h2>Model Selection</h2><span class="sec-tag">config/settings.py</span></div>
+    <table style="margin-bottom:0;">
+        <thead>
+            <tr>
+                <th>Role</th><th>Model</th><th>Why This Choice</th><th>Latency</th><th>Used In</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong style="color:#c2410c;">Intent Parser</strong></td>
+                <td><div class="mbadge mb-p" style="display:inline-flex;"><div class="mdot mdot-p"></div> mistral</div></td>
+                <td>Reliable JSON-mode output. Runs on every query so speed matters. No reasoning blocks that could corrupt JSON parsing.</td>
+                <td>~200ms</td>
+                <td><code>intent_parser.py</code></td>
+            </tr>
+            <tr>
+                <td><strong style="color:#065f46;">Chat Explainer</strong></td>
+                <td><div class="mbadge mb-e" style="display:inline-flex;"><div class="mdot mdot-e"></div> llama3.2</div></td>
+                <td>Fast streaming response. User is watching in real time — low first-token latency matters most here. 3B parameters keeps overhead minimal.</td>
+                <td>~50ms/tok</td>
+                <td><code>explainer.py</code></td>
+            </tr>
+            <tr>
+                <td><strong style="color:#4c1d95;">Report Summaries</strong></td>
+                <td>
+                    <div class="mbadge mb-e" style="display:inline-flex; margin-bottom:4px;"><div class="mdot mdot-e"></div> llama3.2 <span style="background:#d1fae5; color:#065f46; border-radius:8px; padding:0 5px; margin-left:4px; font-size:9px;">current</span></div><br>
+                    <div class="mbadge mb-s" style="display:inline-flex; opacity:0.75;"><div class="mdot mdot-s"></div> deepseek-r1:14b <span style="background:#ede9fe; color:#4c1d95; border-radius:8px; padding:0 5px; margin-left:4px; font-size:9px;">optional upgrade</span></div>
+                </td>
+                <td>Report generation is async — user isn't waiting. Switch to deepseek-r1:14b for richer chain-of-thought reasoning on complex cross-domain summaries. One config line change.</td>
+                <td>~1–3s async</td>
+                <td><code>report_summary_chain.py</code></td>
+            </tr>
+        </tbody>
+    </table>
+
+    <!-- Technical deep dive toggle -->
+    <button onclick="toggleTechSection(this)" class="tech-toggle-btn" id="techToggleBtn">
+        <span class="tgl-arrow">▶</span>
+        &nbsp;Technical Deep Dive — 8 Key Architecture Decisions
+        <span style="margin-left:auto; font-size:11px; font-weight:400; color:#94a3b8;">click to expand</span>
+    </button>
+
+    <div id="tech-details" class="tech-section">
+
+        <div class="da-grid">
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">1</span><span class="da-title">Local LLM via Ollama — no cloud API</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    Banking transaction data and bureau tradelines contain highly sensitive financial PII. Running models locally via Ollama ensures no customer data leaves the organisation's infrastructure. All inference happens on-premises — no token-level billing, no network latency variability, no vendor dependency.
+                    <div class="da-tradeoff">⚠ Trade-off: Lower peak model quality than GPT-4. Mitigated by choosing deepseek-r1:14b for complex report summaries — a reasoning model that approaches frontier quality on structured analytical tasks.</div>
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">2</span><span class="da-title">Three separate models for three different jobs</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    <strong>mistral (parser):</strong> Fast, JSON-reliable, low latency. Intent parsing runs on every query — speed matters more than reasoning depth. JSON mode guarantees parseable output.<br><br>
+                    <strong>llama3.2 (explainer):</strong> Real-time streaming. User is watching — first-token latency matters most. 3B parameters, no reasoning blocks.<br><br>
+                    <strong>llama3.2 / deepseek-r1:14b (summaries):</strong> Report generation is async, quality is critical. deepseek-r1 is the upgrade path for richer cross-signal interpretations in bureau summaries.
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">3</span><span class="da-title">Deterministic core, LLM periphery</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    Every piece of logic that can be expressed as Python code is expressed as Python code. LLMs are used only for natural language understanding (intent parsing) and prose generation (summaries, explanations). This makes the system:
+                    <ul style="margin: 8px 0 0 16px; line-height: 1.8;">
+                        <li><strong>Auditable</strong> — deterministic outputs from named threshold constants</li>
+                        <li><strong>Testable</strong> — pure functions can be unit tested with assert statements</li>
+                        <li><strong>Debuggable</strong> — failures are in Python stack traces, not LLM black boxes</li>
+                        <li><strong>Cheaper</strong> — fewer LLM calls per query</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">4</span><span class="da-title">Pydantic v2 schemas at every module boundary</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    Every interface between pipeline stages is typed: <code>ParsedIntent</code>, <code>ToolResult</code>, <code>TransactionInsights</code>, <code>CustomerReport</code>, <code>BureauReport</code>. Pydantic validates data at runtime and gives IDE type inference across the codebase.<br><br>
+                    The <code>model_copy(update={...})</code> pattern (Pydantic v2) is used for immutable report updates — sections from one report cannot bleed into another. This prevents a class of subtle bugs where cached report data is accidentally mutated.
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">5</span><span class="da-title">YAML-driven category configuration</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    Categories (salary, betting, rent, food, EMI) are defined in <code>config/categories.yaml</code>, not in code. Each entry specifies keywords, aliases, transaction direction, and display name. This allows a non-engineer (product manager, compliance analyst) to add a new detection category or tune keywords without a code deployment.<br><br>
+                    The <code>@lru_cache</code> on the YAML loader means the file is parsed once per process. <code>resolve_category_alias()</code> handles fuzzy user input (e.g. "food" → "Food &amp; Dining").
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">6</span><span class="da-title">Fail-soft report generation</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    Every optional section — LLM summaries, tradeline features, detected events — is wrapped in try/except. Reports are generated with whatever data is available. A single LLM timeout does not fail the entire report. If <code>generate_customer_review()</code> raises an exception, the report section is omitted and the rest is delivered.<br><br>
+                    <div class="da-tradeoff">Design trade-off: A partial report delivered immediately is more valuable than a perfect report that sometimes fails entirely. Operators can see from the report structure which sections were missing and re-run if needed.</div>
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">7</span><span class="da-title">Two-paragraph LLM report structure</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    All LLM-generated report sections follow a fixed two-paragraph structure:<br><br>
+                    <strong>Paragraph 1 — Financial Overview:</strong> LLM synthesises structured numbers (salary, EMI, utilisation) into flowing prose. The numbers are provided as pre-computed facts; the LLM's job is narration, not calculation.<br><br>
+                    <strong>Paragraph 2 — Transaction Events / Behavioral Insights:</strong> LLM narrates specific detected events. The prompt mandates inclusion of all events passed to it — this prevents the LLM from "forgetting" a high-risk event that doesn't fit its narrative structure neatly.
+                </div>
+            </div>
+
+            <div class="da-item" onclick="toggleDA(this)">
+                <div class="da-header">
+                    <span><span class="da-num">8</span><span class="da-title">Multi-layer caching with explicit invalidation</span></span>
+                    <span class="da-chevron">▼</span>
+                </div>
+                <div class="da-body">
+                    Three caching layers, each with a clear invalidation path:
+                    <ul style="margin: 8px 0 0 16px; line-height: 1.9;">
+                        <li><strong>DataFrame cache</strong> (<code>_transactions_df</code>) — module-level, loaded once. Cleared via <code>load_transactions(force_reload=True)</code>.</li>
+                        <li><strong>Report cache</strong> (<code>_REPORT_CACHE</code>) — keyed by <code>(customer_id, period)</code>. Cleared via <code>invalidate_customer_cache()</code>.</li>
+                        <li><strong>Insight cache</strong> (<code>_INSIGHT_CACHE</code>) — keyed by <code>(customer_id, scope)</code>. Cleared via <code>clear_all_cache()</code>.</li>
+                    </ul>
+                    No automatic TTL — appropriate for a batch/session analytics tool where data is refreshed daily. Real-time systems would need TTL or event-driven invalidation.
+                </div>
+            </div>
+
+        </div><!-- end da-grid -->
+
+    </div><!-- end tech-section -->
+
+</div>
+
+<script>
+function showTab(name, btn) {
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + name).classList.add('active');
+    btn.classList.add('active');
+}
+function toggleTechSection(btn) {
+    btn.classList.toggle('open');
+    const section = document.getElementById('tech-details');
+    section.classList.toggle('open');
+    const label = btn.querySelector('span:last-child');
+    if (section.classList.contains('open')) {
+        label.textContent = 'click to collapse';
+    } else {
+        label.textContent = 'click to expand';
+    }
+}
+function toggleDA(item) {
+    item.classList.toggle('open');
+}
+</script>
+</body>
+</html>

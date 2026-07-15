@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bank Analyser — Component Diagram</title>
+<style>
+  :root{
+    --bg:#eef1f7; --ink:#0f172a; --muted:#64748b; --line:#d5dced;
+    --gpu:#7c3aed; --gpu-bg:#f4effe; --gpu-line:#cdbaf7;
+    --cpu:#2563eb; --cpu-bg:#eaf1fe; --cpu-line:#b7d0fb;
+    --tool:#0891b2; --tool-bg:#e6f6fb; --tool-line:#a7e0ee;
+    --out:#059669; --out-bg:#e7f7f0; --out-line:#a7e0c9;
+    --wire:#94a3b8;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:'Segoe UI',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--ink);
+       min-height:100vh;padding:30px 18px;}
+
+  /* diagram frame / canvas */
+  .frame{max-width:1000px;margin:0 auto;background:#fff;border:1px solid #c3cde0;border-radius:8px;
+         background-image:radial-gradient(#d9e0ee 1.1px,transparent 1.1px);background-size:19px 19px;
+         box-shadow:0 1px 0 #fff inset, 0 6px 24px rgba(15,23,42,.06);}
+
+  .frame-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;
+             padding:14px 18px;border-bottom:1px dashed #c3cde0;}
+  .tblock .t1{font-size:15px;font-weight:800;letter-spacing:.2px;}
+  .tblock .t2{font-size:11.5px;color:var(--muted);margin-top:2px;}
+  .keybox{border:1px solid var(--line);border-radius:7px;padding:7px 10px;background:#fbfcff;flex-shrink:0;}
+  .keybox .kt{font-size:9px;font-weight:800;text-transform:uppercase;letter-spacing:.6px;color:#9aa6bd;margin-bottom:5px;}
+  .krow{display:flex;align-items:center;gap:7px;font-size:11px;font-weight:600;margin-top:3px;color:#334155;}
+  .sw{width:11px;height:11px;border-radius:3px;flex-shrink:0;}
+  .sw-gpu{background:var(--gpu)} .sw-cpu{background:var(--cpu)} .sw-tool{background:var(--tool)} .sw-out{background:var(--out)}
+
+  /* flow area */
+  .stage{padding:26px 22px 30px;display:flex;flex-direction:column;align-items:center;}
+
+  /* nodes */
+  .node{background:#fff;border:1.5px solid var(--line);border-radius:9px;padding:13px 16px 14px;
+        text-align:center;position:relative;}
+  .node.gpu{border-color:var(--gpu-line)} .node.cpu{border-color:var(--cpu-line)}
+  .node.tool{border-color:var(--tool-line)} .node.out{border-color:var(--out-line)}
+  .tag{position:absolute;top:-9px;left:50%;transform:translateX(-50%);white-space:nowrap;
+       font-size:9.5px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;
+       border-radius:5px;padding:2px 8px;}
+  .t-gpu{background:var(--gpu-bg);color:var(--gpu);border:1px solid var(--gpu-line)}
+  .t-cpu{background:var(--cpu-bg);color:var(--cpu);border:1px solid var(--cpu-line)}
+  .t-tool{background:var(--tool-bg);color:var(--tool);border:1px solid var(--tool-line)}
+  .t-out{background:var(--out-bg);color:var(--out);border:1px solid var(--out-line)}
+  .node h3{font-size:15px;font-weight:800;margin-top:3px;}
+  .node .sub{font-size:11.5px;color:var(--muted);margin-top:5px;line-height:1.45;}
+  .chips{margin-top:9px;display:flex;flex-wrap:wrap;gap:5px;justify-content:center;}
+  .chip{background:#f1f5f9;border:1px solid #e2e8f0;border-radius:5px;padding:2px 7px;font-size:10.5px;color:#475569;}
+  .meta{margin-top:9px;padding-top:8px;border-top:1px solid #eef2f8;font-size:10px;
+        color:#9aa6bd;font-weight:600;letter-spacing:.2px;line-height:1.4;}
+
+  /* terminators */
+  .term{background:#0f172a;color:#fff;border-radius:24px;padding:8px 22px;font-size:12.5px;font-weight:700;letter-spacing:.3px;}
+
+  /* vertical connector */
+  .vconn{position:relative;width:2px;height:40px;background:var(--wire);margin:5px 0;}
+  .vconn::after{content:'';position:absolute;bottom:-1px;left:50%;transform:translateX(-50%);
+      border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid var(--wire);}
+  .vcap{position:absolute;left:11px;top:50%;transform:translateY(-50%);white-space:nowrap;
+      font-size:10px;color:#475569;font-weight:600;background:#fff;padding:1px 6px;border:1px solid #e2e8f0;border-radius:4px;}
+
+  /* middle row: tools -> runner <-> decoder */
+  .row{display:flex;align-items:stretch;justify-content:center;width:100%;gap:0;}
+  .col{display:flex;flex-direction:column;justify-content:center;flex:1 1 0;max-width:290px;}
+  .col.center{flex:1.15 1 0;}
+  .hconn{flex:0 0 78px;align-self:center;position:relative;height:2px;background:var(--wire);margin-top:4px;}
+  .hconn::after{content:'';position:absolute;top:50%;transform:translateY(-50%);
+      border-top:5px solid transparent;border-bottom:5px solid transparent;}
+  .hconn.r::after{right:-1px;border-left:8px solid var(--wire)}
+  .hconn.bi::before{content:'';position:absolute;top:50%;left:-1px;transform:translateY(-50%);
+      border-top:5px solid transparent;border-bottom:5px solid transparent;border-right:8px solid var(--wire)}
+  .hconn.bi::after{right:-1px;border-left:8px solid var(--wire)}
+  .hcap{position:absolute;left:50%;transform:translateX(-50%);white-space:nowrap;
+      font-size:9.5px;font-weight:700;color:#475569;background:#fff;padding:0 4px;}
+  .hcap.up{bottom:7px} .hcap.dn{top:7px}
+
+  @media(max-width:760px){
+    .row{flex-direction:column;align-items:center;}
+    .col,.col.center{max-width:340px;width:100%;}
+    .hconn{height:34px;width:2px;flex:none;margin:4px 0;}
+    .hconn.r::after{right:auto;top:auto;bottom:-1px;left:50%;transform:translateX(-50%);
+        border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid var(--wire)}
+    .hconn.bi::before{left:50%;top:-1px;transform:translateX(-50%);
+        border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:8px solid var(--wire);border-right-width:0}
+    .hconn.bi::after{right:auto;bottom:-1px;left:50%;transform:translateX(-50%);
+        border-left:5px solid transparent;border-right:5px solid transparent;border-top:8px solid var(--wire)}
+    .hcap{position:static;transform:none;display:block;text-align:center;margin:2px 0;}
+  }
+</style>
+</head>
+<body>
+
+<div class="frame">
+
+  <div class="frame-top">
+    <div class="tblock">
+      <div class="t1">Bank Analyser — Hostable Components</div>
+      <div class="t2">Transactions in &rarr; report out</div>
+    </div>
+    <div class="keybox">
+      <div class="kt">Legend</div>
+      <div class="krow"><span class="sw sw-gpu"></span>Model serving · GPU</div>
+      <div class="krow"><span class="sw sw-cpu"></span>Runner · CPU</div>
+      <div class="krow"><span class="sw sw-tool"></span>Feature tools</div>
+      <div class="krow"><span class="sw sw-out"></span>Output</div>
+    </div>
+  </div>
+
+  <div class="stage">
+
+    <div class="term">Raw transactions</div>
+
+    <div class="vconn"></div>
+
+    <div class="node gpu" style="max-width:290px">
+      <span class="tag t-gpu">Component 1 · GPU</span>
+      <h3>Transaction Tagging Encoder</h3>
+      <div class="sub">Customer-trained model — reads narration + amount + direction and tags each row with an L1/L2 category.</div>
+      <div class="meta">Fine-tuned transformer · stateless · batch inference · scales with volume</div>
+    </div>
+
+    <div class="vconn"><span class="vcap">tagged transactions</span></div>
+
+    <div class="row">
+
+      <!-- LEFT: feature tools -->
+      <div class="col">
+        <div class="node tool">
+          <span class="tag t-tool">Feature tools</span>
+          <h3>Feature Tools</h3>
+          <div class="sub">Deterministic functions run over the tagged rows to produce features.</div>
+          <div class="chips">
+            <span class="chip">salary</span><span class="chip">EMIs</span><span class="chip">cashflow</span>
+            <span class="chip">events</span><span class="chip">account quality</span>
+            <span class="chip">merchants</span><span class="chip">recurring rules</span><span class="chip">scorecard</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="hconn r"><span class="hcap up">features</span></div>
+
+      <!-- CENTER: agent runner -->
+      <div class="col center">
+        <div class="node cpu">
+          <span class="tag t-cpu">Component 3 · CPU</span>
+          <h3>Agent Runner</h3>
+          <div class="sub">The project codebase. Calls the tools to build features, assembles a typed report, then hands them to the decoder and renders the output.</div>
+          <div class="meta">Pure Python (pandas / pydantic) · no GPU · stateless per report · run N workers in parallel</div>
+        </div>
+      </div>
+
+      <div class="hconn bi"><span class="hcap up">features &rarr;</span><span class="hcap dn">&larr; summary</span></div>
+
+      <!-- RIGHT: decoder -->
+      <div class="col">
+        <div class="node gpu">
+          <span class="tag t-gpu">Component 2 · GPU</span>
+          <h3>Decoder LLM</h3>
+          <div class="sub">Turns the structured features into an analyst-grade executive summary. Prose only.</div>
+          <div class="meta">llama3.2 / deepseek-r1 · Ollama or vLLM · stateless · fail-soft</div>
+        </div>
+      </div>
+
+    </div>
+
+    <div class="vconn"><span class="vcap">rendered report</span></div>
+
+    <div class="node out" style="max-width:290px">
+      <span class="tag t-out">Output</span>
+      <h3>Report — HTML / Excel</h3>
+      <div class="sub">Per-customer HTML report (rendered from the typed report object) plus an Excel row export.</div>
+    </div>
+
+  </div>
+
+</div>
+
+</body>
+</html>

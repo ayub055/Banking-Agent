@@ -13,6 +13,8 @@ class KotakOAuth2Handler:
         client_id: str = "*********",
         client_secret: str = "**********",
         ca_bundle: str = "Path to Certificates.pem",
+        scope: str = "openid profile email",
+        verify_ssl: bool = True,
     ):
         """
         Initialize the OAuth2 handler.
@@ -22,10 +24,13 @@ class KotakOAuth2Handler:
             client_id: OAuth2 client ID
             client_secret: OAuth2 client secret
             ca_bundle: Path to CA certificate bundle (e.g., ~/kotak-ca.pem)
+            scope: OAuth2 scope (required by IDAM, e.g. "openid profile email")
         """
         self.token_url = token_url
         self.client_id = client_id
         self.client_secret = client_secret
+        self.scope = scope
+        self.verify_ssl = verify_ssl
         self.ca_bundle = os.path.expanduser(ca_bundle) if ca_bundle else None
         self.token = None
         self.token_expires_at = None
@@ -53,10 +58,13 @@ class KotakOAuth2Handler:
             "client_id": self.client_id,
             "client_secret": self.client_secret,
         }
+        if self.scope:
+            data["scope"] = self.scope
 
         try:
             response = requests.post(
-                self.token_url, headers=headers, data=data, timeout=30, verify=self.ca_bundle or True
+                self.token_url, headers=headers, data=data, timeout=30,
+                verify=self.ca_bundle or self.verify_ssl,
             )
             response.raise_for_status()
             token_response = response.json()
@@ -95,6 +103,7 @@ class KotakAIWrapper:
         bearer_token: str = None,
         oauth2_handler: KotakOAuth2Handler = None,
         ca_bundle: str = "/Users/KMBL404318/Documents/Certificates/Certificates.pem",
+        verify_ssl: bool = True,
     ):
         """
         Initialize the KotakAIWrapper.
@@ -108,6 +117,7 @@ class KotakAIWrapper:
         self.api_url = api_url
         self.bearer_token = bearer_token
         self.oauth2_handler = oauth2_handler
+        self.verify_ssl = verify_ssl
         self.ca_bundle = os.path.expanduser(ca_bundle) if ca_bundle else None
         self.headers = {
             "Content-Type": "application/json",
@@ -151,7 +161,7 @@ class KotakAIWrapper:
 
         payload = {
             "model": model,
-            "messages": [{"role": "user", "content": message}],
+            "messages": [{"role": "user", "content": [{"type": "text", "text": message}]}],
             "max_tokens": max_tokens,
             "temperature": temperature,
             "stream": stream,
@@ -162,7 +172,8 @@ class KotakAIWrapper:
 
         try:
             response = requests.post(
-                self.api_url, json=payload, headers=headers, timeout=30, verify=self.ca_bundle or True
+                self.api_url, json=payload, headers=headers, timeout=30,
+                verify=self.ca_bundle or self.verify_ssl,
             )
             response.raise_for_status()
             return response.json()

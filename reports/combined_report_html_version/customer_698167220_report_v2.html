@@ -1,0 +1,2842 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Banking Risk Report — ###7220</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --indigo:#6366f1; --indigo-deep:#4338ca; --indigo-ink:#1e1b4b;
+    --green:#10b981; --amber:#f59e0b; --red:#ef4444; --grey:#cbd5e1;
+    --border:#e2e8f0; --chip:#eef2ff;
+    --shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+  .shell{max-width:1200px;margin:0 auto;padding:16px 20px 80px}
+
+  /* HEADER */
+  .topbar{
+    position:sticky;top:0;z-index:40;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+    border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:16px;
+    display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);
+  }
+  .topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--indigo-ink)}
+  .topbar .brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--indigo),var(--indigo-deep));display:grid;place-items:center;color:#fff;font-weight:900;font-size:12px}
+  .topbar .cust{display:flex;gap:18px;margin-left:8px;font-size:13px;color:var(--muted)}
+  .topbar .cust b{color:var(--ink)}
+  .topbar .spacer{flex:1}
+  .verdict-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px}
+  .verdict-pill.amber{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+  .verdict-pill.red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+  .verdict-pill.green{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+  .verdict-pill::before{content:"●"}
+  .btn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:600;font-size:12px;color:var(--ink)}
+  .btn:hover{border-color:var(--indigo);color:var(--indigo)}
+
+  /* SECTION NAV CHIPS */
+  .navchips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .navchips a{
+    padding:6px 12px;border-radius:999px;background:var(--chip);color:var(--indigo-deep);
+    font-size:12px;font-weight:600;text-decoration:none;border:1px solid transparent
+  }
+  .navchips a:hover{border-color:var(--indigo)}
+  .navchips a .badge{display:inline-block;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:999px;margin-left:4px}
+
+  /* KPI STRIP */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--indigo)}
+  .kpi.green::before{background:var(--green)}
+  .kpi.amber::before{background:var(--amber)}
+  .kpi.red::before{background:var(--red)}
+  .kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+  .kpi .value{font-size:20px;font-weight:800;color:var(--indigo-ink);margin-top:4px;line-height:1.15}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi .spark{height:28px;margin-top:6px}
+  .stress-gauge{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .stress-gauge .bar{flex:1;height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+  .stress-gauge .fill{height:100%;background:linear-gradient(90deg,var(--green),var(--amber),var(--red))}
+
+  /* PANEL BASE */
+  .panel{position:relative;background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--indigo-deep);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .panel h2::before{content:"";width:4px;height:16px;background:var(--indigo);border-radius:2px}
+  .panel h2 .count{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+  .muted{color:var(--muted);font-size:12.5px;font-style:italic}
+
+  /* CHECKLIST */
+  .checks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .check-col h3{font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:.4px}
+  .check{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid var(--border);margin-bottom:6px;font-size:13px}
+  .check .ico{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .check .lbl{flex:1;font-weight:500}
+  .check .det{font-size:11px;color:var(--muted)}
+  .check.red{background:#fef2f2;border-color:#fecaca}
+  .check.red .ico{background:var(--red);color:#fff}
+  .check.amber{background:#fffbeb;border-color:#fde68a}
+  .check.amber .ico{background:var(--amber);color:#fff}
+  .check.green{background:#f0fdf4;border-color:#bbf7d0}
+  .check.green .ico{background:var(--green);color:#fff}
+  .check.neutral .ico{background:#94a3b8;color:#fff}
+  .check .det{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+
+  /* SUMMARY */
+  .summary{background:linear-gradient(135deg,#eef2ff 0%,#fdf4ff 100%);border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.65;border:1px solid #e0e7ff}
+  .summary .more-toggle{color:var(--indigo);cursor:pointer;font-weight:600;font-size:12px}
+  .summary.clamped .more{display:none}
+  .summary:not(.clamped) .teaser-dots{display:none}
+
+  /* TABS */
+  .tabs{display:inline-flex;gap:0;background:#f1f5f9;padding:3px;border-radius:10px;margin-bottom:14px}
+  .tabs button{padding:6px 14px;border:none;background:transparent;font-weight:600;font-size:12.5px;color:var(--muted);border-radius:8px;cursor:pointer}
+  .tabs button.active{background:#fff;color:var(--indigo-deep);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .tab-body{display:none}
+  .tab-body.active{display:block}
+
+  /* TABLE */
+  table.data{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.data th{text-align:left;padding:10px 12px;background:#f8fafc;color:var(--muted);font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+  table.data td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+  table.data tr:hover td{background:#fafbff}
+  table.data td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  table.data td.dr{color:var(--red)}
+  table.data td.cr{color:var(--green)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.2px}
+  .tag.cat{background:var(--chip);color:var(--indigo-deep)}
+  .tag.emi{background:#fef3c7;color:#92400e}
+  .tag.salary{background:#d1fae5;color:#065f46}
+  .tag.upi{background:#e0e7ff;color:#3730a3}
+  .tag.fraud{background:#fee2e2;color:#991b1b}
+  .tag.inv{background:#cffafe;color:#155e75}
+  .tag.other{background:#f1f5f9;color:#475569}
+  .freq{font-size:11px;color:var(--muted)}
+
+  /* SALARY DOTS */
+  .sal-strip{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+  .sal-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:10px;color:#fff;font-weight:700}
+  .sal-dot.ok{background:var(--green)}
+  .sal-dot.late{background:var(--amber)}
+  .sal-dot.miss{background:var(--red)}
+
+  /* LOAN CARDS */
+  .loan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+  .loan-card{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fafbff;position:relative}
+  .loan-card .head{display:flex;justify-content:space-between;margin-bottom:10px}
+  .loan-card .head b{font-size:13.5px;color:var(--indigo-ink)}
+  .loan-card .amt{font-size:18px;font-weight:800;color:var(--red)}
+  .loan-card.cr .amt{color:var(--green)}
+  .loan-card .row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--muted)}
+  .loan-card .row b{color:var(--ink);font-weight:600}
+
+  /* REMITTERS */
+  .remit-grid{display:grid;grid-template-columns:2fr 3fr;gap:18px;align-items:start}
+  .remit-list{list-style:none}
+  .remit-list li{display:grid;grid-template-columns:30px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--border)}
+  .rank{width:24px;height:24px;border-radius:6px;background:var(--chip);color:var(--indigo-deep);display:grid;place-items:center;font-weight:700;font-size:11px}
+  .remit-list .name{font-weight:600}
+  .remit-list .meta{font-size:11px;color:var(--muted)}
+  .remit-list .amt{font-weight:700;font-variant-numeric:tabular-nums}
+
+  /* TX TABLE TOOLS */
+  .tx-tools{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .tx-tools input{padding:7px 12px;border:1px solid var(--border);border-radius:10px;font-size:12.5px;min-width:220px}
+  .tx-tools .chip{padding:5px 10px;border-radius:999px;background:#f1f5f9;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid transparent}
+  .tx-tools .chip.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+
+  /* CHARTS */
+  .chart-wrap{position:relative;height:280px}
+  .chart-wrap.sm{height:220px}
+
+  /* STRESS SPIKES */
+  .cf-trend-chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;background:#f8fafc;border:1px solid #e2e8f0;cursor:pointer;user-select:none;font-weight:500;color:#334155;transition:background .15s}
+  .cf-trend-chip:hover{background:#eef2ff}
+  .cf-trend-chip input{margin:0;cursor:pointer}
+  /* Analysis panel */
+  .an-grid{display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:start}
+  @media (max-width:900px){.an-grid{grid-template-columns:1fr}}
+  .an-toolbar{display:flex;flex-wrap:wrap;gap:14px;align-items:center;margin:6px 0 12px;font-size:12px;color:var(--muted)}
+  .an-pillgrp{display:inline-flex;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:999px;padding:2px}
+  .an-pill{padding:4px 12px;border-radius:999px;cursor:pointer;font-weight:500;color:#475569;font-size:11.5px;letter-spacing:.02em}
+  .an-pill.active{background:#6366f1;color:#fff;box-shadow:0 1px 3px rgba(99,102,241,.35)}
+  .an-list{border:1px solid #e2e8f0;border-radius:10px;background:#fff;max-height:440px;overflow-y:auto}
+  .an-grp{border-bottom:1px solid #f1f5f9}
+  .an-grp:last-child{border-bottom:0}
+  .an-grp-head{padding:8px 12px;font-size:10.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6366f1;background:#f8fafc;cursor:pointer;display:flex;justify-content:space-between;align-items:center;user-select:none}
+  .an-grp-head .chev{transition:transform .15s;font-size:9px;opacity:.6}
+  .an-grp.collapsed .chev{transform:rotate(-90deg)}
+  .an-grp.collapsed .an-rows{display:none}
+  .an-row{padding:6px 12px;display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:12.5px;color:#1e293b;border-top:1px solid #f8fafc}
+  .an-row:hover{background:#f8fafc}
+  .an-row .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .an-row .opts{display:inline-flex;gap:6px;font-size:10.5px;color:#64748b}
+  .an-row .opts label{display:inline-flex;align-items:center;gap:3px;cursor:pointer;padding:1px 5px;border-radius:4px}
+  .an-row .opts label:hover{background:#eef2ff;color:#4338ca}
+  .an-row .opts input{margin:0;cursor:pointer;accent-color:#6366f1}
+  .an-foot{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;font-size:11px;border-top:1px solid #e2e8f0;background:#fafbfd;color:#64748b}
+  .an-foot a{color:#6366f1;cursor:pointer;text-decoration:none}
+  .an-foot a:hover{text-decoration:underline}
+  .an-empty{padding:36px 14px;text-align:center;color:#94a3b8;font-size:12px;border:1px dashed #e2e8f0;border-radius:10px}
+  .spike-note{font-size:11px;color:var(--red);margin-top:6px;display:flex;align-items:center;gap:6px}
+  .spike-note::before{content:"⚠"}
+
+  /* HEATMAP */
+  .heat-wrap{display:flex;flex-direction:column;gap:8px}
+  .heat-row{display:flex;align-items:center;gap:8px}
+  .heat-row .lbl{font-size:10px;color:var(--muted);width:44px;flex-shrink:0;text-align:right}
+  .heat-row .cells{display:grid;grid-template-columns:repeat(31,10px);gap:2px}
+  .heat-row .cells div{background:#e2e8f0;border-radius:2px;height:10px}
+  .heat-row .cells .l1{background:#c7d2fe}.heat-row .cells .l2{background:#818cf8}.heat-row .cells .l3{background:#6366f1}.heat-row .cells .l4{background:#4338ca}
+  .heat-axis{display:grid;grid-template-columns:repeat(31,10px);gap:2px;margin-left:52px;font-size:9px;color:var(--muted)}
+  .heat-axis div{text-align:center}
+  .heat-legend{font-size:11px;color:var(--muted)}
+
+  /* FOOTER */
+  .foot{text-align:center;color:var(--muted);font-size:11px;margin-top:20px}
+
+  /* ANALYST NOTEPAD — single floating panel, follows scroll, indigo theme */
+  .notepad{
+    position:fixed;top:96px;right:20px;width:300px;max-height:calc(100vh - 140px);
+    background:#fff;border:1px solid var(--border);border-radius:12px;
+    box-shadow:var(--shadow);z-index:45;display:flex;flex-direction:column;
+    transition:transform .25s ease, opacity .2s ease;overflow:hidden;
+  }
+  .notepad.hidden{transform:translateX(calc(100% + 28px));opacity:0;pointer-events:none}
+  .notepad .head{
+    display:flex;align-items:center;gap:8px;padding:10px 12px;
+    background:linear-gradient(135deg,var(--indigo) 0%,var(--indigo-deep) 100%);
+    color:#fff;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;
+    cursor:grab;
+  }
+  .notepad .head .icon{font-size:13px}
+  .notepad .head .lbl{flex:1}
+  .notepad .head .ctx{font-size:10px;font-weight:600;opacity:.85;text-transform:none;letter-spacing:0;background:rgba(255,255,255,.18);padding:2px 7px;border-radius:999px}
+  .notepad .head .x{background:transparent;border:none;color:#fff;cursor:pointer;font-size:14px;padding:0 4px;opacity:.85;line-height:1}
+  .notepad .head .x:hover{opacity:1}
+  .notepad textarea{
+    flex:1;border:none;outline:none;resize:none;padding:10px 12px;
+    font-family:inherit;font-size:12.5px;line-height:1.55;color:var(--ink);
+    min-height:200px;background:#fff;
+  }
+  .notepad textarea::placeholder{color:var(--muted);opacity:.7}
+  .notepad .foot{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:6px 12px;border-top:1px solid var(--border);background:#f8fafc;
+    font-size:10.5px;color:var(--muted);
+  }
+  .notepad .foot .ts{font-style:italic}
+  .notepad .foot .insert{background:transparent;border:none;color:var(--indigo);cursor:pointer;font-size:11px;font-weight:600}
+  .notepad .foot .insert:hover{text-decoration:underline}
+
+  /* Collapsed tab — horizontal pill at top-right */
+  .notepad-tab{
+    position:fixed;top:96px;right:20px;z-index:44;
+    background:linear-gradient(135deg,var(--indigo) 0%,var(--indigo-deep) 100%);
+    color:#fff;border:none;cursor:pointer;
+    padding:8px 14px;border-radius:999px;
+    font-size:12px;font-weight:700;letter-spacing:.3px;
+    box-shadow:0 4px 14px rgba(99,102,241,.30);
+    display:none;align-items:center;gap:8px;
+  }
+  .notepad-tab.visible{display:inline-flex}
+  .notepad-tab:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(99,102,241,.40)}
+  .notepad-tab .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:#fbbf24}
+
+  /* First-visit attention pulse */
+  @keyframes notepadPulse {
+    0%   { box-shadow:0 0 0 0 rgba(99,102,241,.55), var(--shadow); }
+    70%  { box-shadow:0 0 0 14px rgba(99,102,241,0), var(--shadow); }
+    100% { box-shadow:0 0 0 0 rgba(99,102,241,0),   var(--shadow); }
+  }
+  .notepad.intro-pulse{animation:notepadPulse 1.6s ease-out 3}
+  .notepad-tab.intro-pulse{animation:notepadPulse 1.6s ease-out 3}
+
+  /* First-visit hint bubble */
+  .notepad-hint{
+    position:fixed;top:150px;right:340px;z-index:46;max-width:240px;
+    background:#1e293b;color:#fff;font-size:12px;line-height:1.45;
+    padding:10px 12px 10px 14px;border-radius:10px;
+    box-shadow:0 8px 20px rgba(15,23,42,.30);
+    display:none;
+  }
+  .notepad-hint.visible{display:block}
+  .notepad-hint::after{
+    content:"";position:absolute;top:18px;right:-6px;width:12px;height:12px;
+    background:#1e293b;transform:rotate(45deg);
+  }
+  .notepad-hint .x{position:absolute;top:4px;right:6px;background:transparent;border:none;color:#cbd5e1;cursor:pointer;font-size:13px}
+
+  /* Notes download dropdown (sits in topbar) */
+  .notes-menu{position:relative;display:inline-block}
+  .notes-menu .menu{
+    position:absolute;top:calc(100% + 6px);right:0;min-width:180px;
+    background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);
+    padding:4px;display:none;z-index:60;
+  }
+  .notes-menu.open .menu{display:block}
+  .notes-menu .menu button{
+    display:block;width:100%;text-align:left;padding:8px 10px;border:none;background:transparent;
+    border-radius:6px;cursor:pointer;font-size:12.5px;color:var(--ink);font-weight:500;
+  }
+  .notes-menu .menu button:hover{background:var(--chip);color:var(--indigo-deep)}
+  .notes-menu .menu .sep{height:1px;background:var(--border);margin:4px 6px}
+  .notes-menu .menu .danger{color:var(--red)}
+  .notes-menu .btn:disabled{opacity:.5;cursor:not-allowed}
+  .notes-menu .btn .badge{display:inline-block;background:var(--amber);color:#fff;font-size:10px;padding:0 5px;border-radius:999px;margin-left:4px;font-weight:700}
+
+  /* BACK-TO-TOP */
+  .back-to-top{
+    position:fixed;bottom:24px;right:24px;width:42px;height:42px;border-radius:50%;
+    background:var(--indigo);color:#fff;border:none;cursor:pointer;font-size:18px;font-weight:700;
+    box-shadow:0 4px 14px rgba(99,102,241,.35);opacity:0;pointer-events:none;
+    transition:opacity .2s, transform .2s;z-index:50;display:grid;place-items:center;
+  }
+  .back-to-top.visible{opacity:1;pointer-events:auto}
+  .back-to-top:hover{background:var(--indigo-deep);transform:translateY(-2px)}
+
+  /* PRINT — strip toolbars/buttons, drop shadows, keep content & charts crisp */
+  @media print {
+    @page { size: A4; margin: 12mm; }
+    body { background:#fff; font-size:12px; }
+    .shell { max-width:none; padding:0; }
+    .topbar { position:static; box-shadow:none; backdrop-filter:none; background:#fff; }
+    .topbar .btn, .topbar .notes-menu, .navchips, .tabs, .tx-tools, .cf-trend-toolbar,
+    .tx-pager, .back-to-top, .notepad, .notepad-tab, .more-toggle, .teaser-dots,
+    .an-toolbar, .an-list, .an-foot { display:none !important; }
+    .an-grid { grid-template-columns: 1fr !important; }
+    .summary.clamped .more { display:block !important; }
+    .summary .teaser-dots { display:none !important; }
+    .panel { box-shadow:none; border:1px solid #d1d5db; break-inside:avoid; page-break-inside:avoid; margin-bottom:10px; padding:12px 14px; }
+    .kpi { box-shadow:none; break-inside:avoid; }
+    .tab-body { display:block !important; }   /* show every tab in print */
+    .tab-body + .tab-body { margin-top:14px; border-top:1px dashed #d1d5db; padding-top:10px; }
+    .chart-wrap { height:200px; page-break-inside:avoid; }
+    .chart-wrap.sm { height:170px; }
+    table.data { font-size:11px; }
+    table.data th { background:#f3f4f6 !important; -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    .check, .loan-card, .verdict-pill, .kpi, .summary,
+    .tag, .heat-row .cells div { -webkit-print-color-adjust:exact; print-color-adjust:exact; }
+    a[href]::after { content:""; }
+  }
+
+  /* ADMIN EDIT MODE */
+  body[data-edit-mode="on"] #adminToggleBtn { background:#fef3c7; border-color:#f59e0b; color:#92400e }
+  body[data-edit-mode="on"] table.data#txTable .cat-l2-cell { background:#fffbeb; cursor:pointer; outline:1px dashed #f59e0b; outline-offset:-2px }
+  body[data-edit-mode="on"] table.data#txTable .cat-l2-cell:hover { background:#fef3c7 }
+  body[data-edit-mode="on"] table.data#txTable tr.row-edited .cat-l2-cell,
+  body[data-edit-mode="on"] table.data#txTable tr.row-edited .cat-l1-cell { background:#d1fae5; outline-color:#10b981 }
+  .cat-l2-cell select.l2-picker { font:inherit; padding:2px 6px; border-radius:6px; border:1px solid var(--indigo); background:#fff; color:var(--ink); max-width:170px }
+  .admin-toast { position:fixed; bottom:24px; left:50%; transform:translateX(-50%); background:var(--ink); color:#fff; padding:10px 18px; border-radius:10px; font-size:13px; font-weight:600; z-index:9999; box-shadow:var(--shadow); opacity:0; transition:opacity .25s }
+  .admin-toast.show { opacity:1 }
+  .admin-toast.err { background:#991b1b }
+  .admin-toast.ok { background:#065f46 }
+</style>
+</head>
+<body>
+<div class="shell">
+
+  
+  
+  
+  <div class="topbar">
+    <div class="brand"><div class="logo">K</div>Banking Risk Report</div>
+    
+    <div class="cust">
+      <div><b>Customer:</b> ###7220 · ASHISH JANKIRAM PATIL</div>
+      <div><b>Period:</b> Last 6 months</div>
+      <div><b>Txns:</b> 61</div>
+    </div>
+    
+    <div class="spacer"></div>
+    <button class="btn" id="adminToggleBtn" onclick="toggleAdminMode()" title="Admin: edit transaction categories">Admin</button>
+    <button class="btn" id="adminSaveBtn" onclick="saveAdminEdits()" style="display:none;background:var(--indigo);color:#fff;border-color:var(--indigo)" title="Save edits and exit edit mode">Save &amp; Exit <span id="adminEditCount" style="opacity:.8;font-weight:500">0</span></button>
+    <div class="notes-menu" id="exportMenu">
+      <button class="btn" onclick="toggleExportMenu(event)" title="Export this report">Export ⤓</button>
+      <div class="menu" role="menu">
+        <button onclick="closeExportMenu(); window.print();">Download as PDF</button>
+        <button onclick="closeExportMenu(); exportRiskTrailCSV();">Download as CSV</button>
+        <button onclick="closeExportMenu(); downloadRiskTrail();">Download as JSON</button>
+      </div>
+    </div>
+    <div class="notes-menu" id="notesMenu">
+      <button class="btn" id="notesDownloadBtn" onclick="toggleNotesMenu(event)" disabled title="Download analyst review notes">E-Mail ⤓<span class="badge" id="notesCount" style="display:none">0</span></button>
+      <div class="menu" role="menu">
+        <button onclick="downloadNotes('md')">Download as Markdown (.md)</button>
+        <button onclick="downloadNotes('json')">Download as JSON (.json)</button>
+        <div class="sep"></div>
+        <button class="danger" onclick="clearAllNotes()">Clear all notes</button>
+      </div>
+    </div>
+  </div>
+
+  
+  
+  
+  <div class="navchips">
+    <a href="#kpis">Overview</a>
+    <a href="#checks">Risk Checks</a>
+    <a href="#summary">Summary</a>
+    <a href="#cashflow">Cashflow</a>
+    <a href="#analysis">Analysis</a>
+    <a href="#recurring">Recurring</a>
+    <a href="#loans">Loan Activity</a>
+    <a href="#remitters">Top Remitters</a>
+    <a href="#txns">Transactions</a>
+  </div>
+
+  
+  
+  
+  
+  
+  <div class="kpis" id="kpis">
+    
+    <div class="kpi green">
+      <div class="label">Avg Salary</div>
+      <div class="value">₹ 51,020</div>
+      <div class="sub">6 of 6 months credited</div>
+      <div class="sal-strip">
+        
+        <div class="sal-dot ok" title="Sep &#39;25">S</div>
+        
+        <div class="sal-dot ok" title="Oct &#39;25">O</div>
+        
+        <div class="sal-dot ok" title="Nov &#39;25">N</div>
+        
+        <div class="sal-dot ok" title="Dec &#39;25">D</div>
+        
+        <div class="sal-dot ok" title="Jan &#39;26">J</div>
+        
+        <div class="sal-dot ok" title="Feb &#39;26">F</div>
+        
+      </div>
+    </div>
+    
+
+    
+    <div class="kpi">
+      <div class="label">Avg Closing Balance</div>
+      <div class="value">₹ -41,926</div>
+      <div class="sub">Min ₹ -1,99,213 · Max ₹ 24,135</div>
+      <div class="spark"><canvas id="sparkBal"></canvas></div>
+    </div>
+    
+
+    
+    <div class="kpi red">
+      <div class="label">Net Cashflow (6M)</div>
+      <div class="value">− ₹ 1,51,552</div>
+      <div class="sub">Outflow &gt; Inflow in 2025-11, 2025-12, 2026-01, 2026-02</div>
+      <div class="spark"><canvas id="sparkNet"></canvas></div>
+    </div>
+    
+
+    
+    <div class="kpi red">
+      <div class="label">Total EMI / mo</div>
+      <div class="value">₹ 26,434</div>
+      <div class="sub">51.8% of salary · 5 active loans</div>
+    </div>
+    
+
+    
+    <div class="kpi green">
+      <div class="label">Stress Score</div>
+      <div class="value">95 <span style="font-size:12px;color:var(--green);font-weight:600">LOW</span></div>
+      <div class="stress-gauge"><div class="bar"><div class="fill" style="width:95%"></div></div></div>
+      <div class="sub">Confirm income source from employer or IT returns</div>
+    </div>
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="checks">
+    <h2>Risk · FCU · Fraud Indicators <span class="count">17 checks · 0 red · 5 amber</span></h2>
+    <div class="checks">
+      <div class="check-col">
+        <h3>Risk</h3>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">ECS / NACH bounces</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Loan disbursement detected</div></div>
+        
+        <div class="check green"><div class="ico">✓</div><div class="lbl">Salary detected in banking<div class="det">₹51,020 avg (6 transactions)</div></div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">EMI obligations present<div class="det">₹26,434 total across 5 lender(s)</div></div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">NACH mandate EMI detected<div class="det">Ongoing (6 months): NACH mandate / SPLN EMI debit — avg ₹5,536/month (NACH-10-DR-PLA5150547202-3BPAN9NJ1HT2QB)</div></div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Rent payments present</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Credit card bill payments</div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">Emerging merchants detected<div class="det">4 new: REKHA KANSAL, SALIM AMIN ATTA, Arti Dipak Salu</div></div></div>
+        
+      </div>
+      <div class="check-col">
+        <h3>FCU</h3>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Post-disbursement fund diversion</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Big debits after salary credit (≥40% within 3d)</div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">Counterparties on both credit &amp; debit<div class="det">2 counterparties on both sides — top: EMI EV (₹5,000 in / ₹5,000 out)</div></div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Land purchase payments</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Automated (NACH/mandate) transactions<div class="det">8 total (8 debits, 0 credits)</div></div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Payment mode distribution shift</div></div>
+        
+      </div>
+      <div class="check-col">
+        <h3>Fraud</h3>
+        
+        <div class="check green"><div class="ico">✓</div><div class="lbl">Circular entry (mirror credit/debit)</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">ATM withdrawals elevated</div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">Transactions above 95th percentile<div class="det">Salary Feb 2026: ₹52,161 (credit); PATELKISHANKUMA: ₹50,000 (debit); PATELKISHANKUMA: ₹50,000 (debit); PATELKISHANKUMA: ₹38,000 (debit)</div></div></div>
+        
+      </div>
+    </div>
+  </div>
+  
+
+  
+  
+  
+  <div class="panel" id="summary">
+    <h2>Banking Summary <span class="count">LLM-generated narrative</span></h2>
+    <div class="summary clamped" id="sum">
+      The customer&#39;s banking profile presents a mixed picture. Their average monthly cash flow shows an inflow of ₹313,622 and outflow of ₹465,174, resulting in an average net deficit of ₹151,552 per month.
+      
+      <span class="teaser-dots">… <span class="more-toggle" onclick="toggleSummary()">read more</span></span>
+      <div class="more">
+        This translates to a stretched obligation-to-income ratio of 51.8%, indicating that their income is barely covering their essential expenses. The customer&#39;s spending categories reveal some concerning trends. The largest portion of their expenditure goes towards self-transfers (420,345 INR), followed by finance and peer-to-peer transactions (545 INR). This suggests a high level of financial risk-taking, with a significant proportion of their income being diverted towards non-essential expenses. Furthermore, the customer&#39;s EMI payments are visible, indicating that they have taken on debt to purchase a vehicle. The customer&#39;s merchant behavior is also noteworthy. The most frequent merchant is PATELKISHANKUMA, which accounts for 32 transactions and ₹412,800 in spending. Additionally, there are regular merchants such as Salary Oct 2025, BHOSALE RAJU TA, PLA5150547202, and LM00849846, among others. The customer&#39;s favourite debit merchants include PLA5150547202 and LM00849846, while their favourite credit merchant is Salary Oct 2025. Notably, the customer has received high amounts of salary income from employer credits, with one instance in Jan 2026 where ₹51,111 was received and spent within 3 days at a rate of 122%.
+        <span class="more-toggle" onclick="toggleSummary()"> show less</span>
+      </div>
+      
+    </div>
+  </div>
+
+  
+  
+  
+  
+  <div class="panel" id="cashflow">
+    <h2>Monthly Cashflow &amp; Running Balance</h2>
+    <div class="cf-trend-toolbar" style="display:flex;flex-wrap:wrap;gap:6px 14px;align-items:center;margin:6px 0 10px;font-size:12px;color:var(--muted)">
+      <span style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;color:#475569">Trends:</span>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="0" checked> <span style="color:#10b981">●</span> Credits</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="1" checked> <span style="color:#ef4444">●</span> Debits</label>
+      
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="2" checked> <span style="color:#6366f1">●</span> Closing Balance</label>
+      
+      <span style="opacity:.4">|</span>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="mc"> <span style="color:#059669">▲</span> Max Credit</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="md"> <span style="color:#b91c1c">▲</span> Max Debit</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="medc"> <span style="color:#34d399">◆</span> Median Credit</label>
+      <label class="cf-trend-chip"><input type="checkbox" data-cf-series="medd"> <span style="color:#fb7185">◆</span> Median Debit</label>
+    </div>
+    <div class="chart-wrap"><canvas id="cashChart"></canvas></div>
+    
+    <div class="spike-note">Outflow spikes (&gt;1.5× median) in 2026-02</div>
+    
+
+    <div style="margin-top:18px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start">
+      
+      <div style="overflow-x:auto;min-width:0">
+        <h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Debit Velocity Heatmap <span class="freq">(Sep 2025 – Feb 2026 · day-of-month)</span></h3>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">53 debits across 6 months</div>
+        <div class="heat-wrap" id="heatmap"></div>
+        <div class="heat-axis" id="heatmap-axis"></div>
+        <div class="heat-legend" style="margin-top:8px">
+          Low <span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#c7d2fe;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#818cf8;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#6366f1;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#4338ca;margin:0 2px;border-radius:2px"></span>
+          High
+        </div>
+      </div>
+      
+      
+      <div style="min-width:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px">
+          <h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin:0">Category Spend Mix</h3>
+          
+          <div class="an-pillgrp" id="catMixGrain" style="font-size:11px">
+            <span class="an-pill active" data-grain="l1">L1</span>
+            <span class="an-pill" data-grain="l2">L2</span>
+          </div>
+          
+        </div>
+        <div class="chart-wrap sm"><canvas id="catMix"></canvas></div>
+        <div id="catMixTail" style="font-size:11px;color:var(--muted);margin-top:6px;text-align:center;min-height:14px"></div>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="analysis">
+    <h2>Analysis <span class="freq" style="font-size:11px;color:var(--muted);font-weight:500;margin-left:6px">Pick variables to plot · scale auto-fits</span></h2>
+    <div class="an-toolbar">
+      <span style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;color:#475569">Grain:</span>
+      <div class="an-pillgrp" id="anGrain">
+        <span class="an-pill active" data-grain="monthly">Monthly</span>
+        <span class="an-pill" data-grain="weekly">Weekly</span>
+        <span class="an-pill" data-grain="daily">Daily</span>
+      </div>
+      <span style="text-transform:uppercase;letter-spacing:.04em;font-weight:600;color:#475569;margin-left:8px">View:</span>
+      <div class="an-pillgrp" id="anMode">
+        <span class="an-pill active" data-mode="mixed">Mixed</span>
+        <span class="an-pill" data-mode="amt">Amounts</span>
+        <span class="an-pill" data-mode="count">Counts</span>
+      </div>
+    </div>
+    <div class="an-grid">
+      <div>
+        <div class="an-list" id="anList">
+          
+          <div class="an-grp" data-grp="Summary">
+            <div class="an-grp-head">Summary <span class="chev">▾</span></div>
+            <div class="an-rows">
+              
+              <div class="an-row">
+                <span class="nm" title="Total Debit">Total Debit</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="total_debit" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="total_debit" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+              <div class="an-row">
+                <span class="nm" title="Total Credit">Total Credit</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="total_credit" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="total_credit" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+            </div>
+          </div>
+          
+          <div class="an-grp" data-grp="Debit">
+            <div class="an-grp-head">Debit <span class="chev">▾</span></div>
+            <div class="an-rows">
+              
+              <div class="an-row">
+                <span class="nm" title="EMI">EMI</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="emi" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="emi" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+              <div class="an-row">
+                <span class="nm" title="Bounced / Charges">Bounced / Charges</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="bounce_charges" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="bounce_charges" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+            </div>
+          </div>
+          
+          <div class="an-grp" data-grp="Credit">
+            <div class="an-grp-head">Credit <span class="chev">▾</span></div>
+            <div class="an-rows">
+              
+              <div class="an-row">
+                <span class="nm" title="Salary">Salary</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="salary" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="salary" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+              <div class="an-row">
+                <span class="nm" title="Recurring Credits">Recurring Credits</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="recurring_credits" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="recurring_credits" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+              <div class="an-row">
+                <span class="nm" title="Loan Credit">Loan Credit</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="loan_credit" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="loan_credit" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+              <div class="an-row">
+                <span class="nm" title="Large Credits">Large Credits</span>
+                <span class="opts">
+                  <label><input type="checkbox" data-an-var="large_credit" data-an-kind="amt"> Amt</label>
+                  <label><input type="checkbox" data-an-var="large_credit" data-an-kind="count"> Cnt</label>
+                </span>
+              </div>
+              
+            </div>
+          </div>
+          
+        </div>
+        <div class="an-foot">
+          <a id="anReset">Reset</a>
+          <a id="anClear">Clear</a>
+        </div>
+      </div>
+      <div>
+        <div class="chart-wrap"><canvas id="anChart"></canvas></div>
+        <div class="an-empty" id="anEmpty" style="display:none">Select one or more variables on the left to plot.</div>
+      </div>
+    </div>
+  </div>
+  <script id="analysis-data" type="application/json">{"defaults": ["total_debit", "total_credit"], "grains": {"daily": {"buckets": ["2025-09-02", "2025-09-03", "2025-09-04", "2025-09-05", "2025-09-06", "2025-09-07", "2025-09-08", "2025-09-09", "2025-09-10", "2025-09-11", "2025-09-12", "2025-09-13", "2025-09-14", "2025-09-15", "2025-09-16", "2025-09-17", "2025-09-18", "2025-09-19", "2025-09-20", "2025-09-21", "2025-09-22", "2025-09-23", "2025-09-24", "2025-09-25", "2025-09-26", "2025-09-27", "2025-09-28", "2025-09-29", "2025-09-30", "2025-10-01", "2025-10-02", "2025-10-03", "2025-10-04", "2025-10-05", "2025-10-06", "2025-10-07", "2025-10-08", "2025-10-09", "2025-10-10", "2025-10-11", "2025-10-12", "2025-10-13", "2025-10-14", "2025-10-15", "2025-10-16", "2025-10-17", "2025-10-18", "2025-10-19", "2025-10-20", "2025-10-21", "2025-10-22", "2025-10-23", "2025-10-24", "2025-10-25", "2025-10-26", "2025-10-27", "2025-10-28", "2025-10-29", "2025-10-30", "2025-10-31", "2025-11-01", "2025-11-02", "2025-11-03", "2025-11-04", "2025-11-05", "2025-11-06", "2025-11-07", "2025-11-08", "2025-11-09", "2025-11-10", "2025-11-11", "2025-11-12", "2025-11-13", "2025-11-14", "2025-11-15", "2025-11-16", "2025-11-17", "2025-11-18", "2025-11-19", "2025-11-20", "2025-11-21", "2025-11-22", "2025-11-23", "2025-11-24", "2025-11-25", "2025-11-26", "2025-11-27", "2025-11-28", "2025-11-29", "2025-11-30", "2025-12-01", "2025-12-02", "2025-12-03", "2025-12-04", "2025-12-05", "2025-12-06", "2025-12-07", "2025-12-08", "2025-12-09", "2025-12-10", "2025-12-11", "2025-12-12", "2025-12-13", "2025-12-14", "2025-12-15", "2025-12-16", "2025-12-17", "2025-12-18", "2025-12-19", "2025-12-20", "2025-12-21", "2025-12-22", "2025-12-23", "2025-12-24", "2025-12-25", "2025-12-26", "2025-12-27", "2025-12-28", "2025-12-29", "2025-12-30", "2025-12-31", "2026-01-01", "2026-01-02", "2026-01-03", "2026-01-04", "2026-01-05", "2026-01-06", "2026-01-07", "2026-01-08", "2026-01-09", "2026-01-10", "2026-01-11", "2026-01-12", "2026-01-13", "2026-01-14", "2026-01-15", "2026-01-16", "2026-01-17", "2026-01-18", "2026-01-19", "2026-01-20", "2026-01-21", "2026-01-22", "2026-01-23", "2026-01-24", "2026-01-25", "2026-01-26", "2026-01-27", "2026-01-28", "2026-01-29", "2026-01-30", "2026-01-31", "2026-02-01", "2026-02-02", "2026-02-03", "2026-02-04", "2026-02-05", "2026-02-06", "2026-02-07", "2026-02-08", "2026-02-09", "2026-02-10", "2026-02-11", "2026-02-12", "2026-02-13", "2026-02-14", "2026-02-15", "2026-02-16", "2026-02-17", "2026-02-18", "2026-02-19", "2026-02-20", "2026-02-21", "2026-02-22", "2026-02-23", "2026-02-24", "2026-02-25", "2026-02-26", "2026-02-27", "2026-02-28"], "series": {"bounce_charges": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "emi": {"amt": [0.0, 0.0, 0.0, 17434.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 17434.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1500.0, 5000.0, 0.0, 0.0, 0.0, 0.0, 2354.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2354.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2354.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 2500.0, 0.0, 0.0, 0.0, 2354.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "large_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "loan_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "recurring_credits": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "salary": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]}, "total_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50314.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 55314.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51111.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51111.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 51111.0, 0.0, 2500.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 52161.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0]}, "total_debit": {"amt": [10025.0, 0.0, 0.0, 18187.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 16681.0, 0.0, 0.0, 0.0, 10000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 50.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 20000.0, 0.0, 0.0, 0.0, 0.0, 1500.0, 5000.0, 7000.0, 0.0, 0.0, 0.0, 2354.0, 50.0, 0.0, 0.0, 0.0, 13000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1200.0, 0.0, 1000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 38000.0, 27000.0, 0.0, 1500.0, 0.0, 5000.0, 0.0, 6000.0, 2354.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 45.0, 0.0, 0.0, 0.0, 0.0, 75.0, 0.0, 11000.0, 0.0, 0.0, 0.0, 0.0, 50000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 150.0, 5000.0, 10000.0, 3900.0, 0.0, 2354.0, 0.0, 0.0, 35000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 16000.0, 3000.0, 0.0, 0.0, 0.0, 0.0, 0.0, 27400.0, 0.0, 45.0, 0.0, 52500.0, 10000.0, 0.0, 0.0, 2404.0, 8300.0, 0.0, 0.0, 0.0, 50.0, 0.0, 0.0, 2500.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 35000.0, 4500.0], "count": [2, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 1, 2, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 0, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 2, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 1, 0, 1, 0, 2, 2, 0, 0, 2, 2, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1]}}}, "monthly": {"buckets": ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "series": {"bounce_charges": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0]}, "emi": {"amt": [17434.0, 23934.0, 2354.0, 2354.0, 2354.0, 4854.0], "count": [2, 4, 1, 1, 1, 2]}, "large_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0]}, "loan_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0]}, "recurring_credits": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0]}, "salary": {"amt": [51020.0, 51020.0, 51020.0, 51020.0, 51020.0, 51020.0], "count": [1, 1, 1, 1, 1, 1]}, "total_credit": {"amt": [50314.0, 55314.0, 51111.0, 51111.0, 51111.0, 54661.0], "count": [1, 2, 1, 1, 1, 2]}, "total_debit": {"amt": [28262.0, 53231.0, 91104.0, 74624.0, 102699.0, 115254.0], "count": [5, 7, 10, 9, 10, 12]}}}, "weekly": {"buckets": ["2025-W36", "2025-W37", "2025-W38", "2025-W39", "2025-W40", "2025-W41", "2025-W42", "2025-W43", "2025-W44", "2025-W45", "2025-W46", "2025-W47", "2025-W48", "2025-W49", "2025-W50", "2025-W51", "2025-W52", "2026-W01", "2026-W02", "2026-W03", "2026-W04", "2026-W05", "2026-W06", "2026-W07", "2026-W08", "2026-W09"], "series": {"bounce_charges": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "emi": {"amt": [17434.0, 0.0, 0.0, 0.0, 17434.0, 0.0, 0.0, 0.0, 6500.0, 2354.0, 0.0, 0.0, 0.0, 2354.0, 0.0, 0.0, 0.0, 0.0, 2354.0, 0.0, 0.0, 2500.0, 2354.0, 0.0, 0.0, 0.0], "count": [2, 0, 0, 0, 2, 0, 0, 0, 2, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 0]}, "large_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "loan_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "recurring_credits": {"amt": [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], "count": [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]}, "salary": {"amt": [0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 51020.0, 0.0, 0.0, 0.0, 51020.0], "count": [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 1]}, "total_credit": {"amt": [0.0, 0.0, 0.0, 0.0, 50314.0, 0.0, 0.0, 0.0, 55314.0, 0.0, 0.0, 0.0, 51111.0, 0.0, 0.0, 0.0, 0.0, 51111.0, 0.0, 0.0, 0.0, 53611.0, 0.0, 0.0, 0.0, 52161.0], "count": [0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 2, 0, 0, 0, 1]}, "total_debit": {"amt": [28212.0, 0.0, 0.0, 50.0, 16681.0, 10000.0, 50.0, 20000.0, 13500.0, 2404.0, 13000.0, 2200.0, 66500.0, 13354.0, 45.0, 11075.0, 50000.0, 19050.0, 37354.0, 0.0, 19000.0, 79945.0, 20704.0, 2550.0, 0.0, 39500.0], "count": [4, 0, 0, 1, 2, 1, 1, 1, 4, 2, 1, 2, 3, 3, 1, 3, 1, 5, 2, 0, 2, 4, 6, 2, 0, 2]}}}}, "groups": ["Summary", "Debit", "Credit"], "vars": [{"group": "Summary", "id": "total_debit", "label": "Total Debit"}, {"group": "Summary", "id": "total_credit", "label": "Total Credit"}, {"group": "Debit", "id": "emi", "label": "EMI"}, {"group": "Debit", "id": "bounce_charges", "label": "Bounced / Charges"}, {"group": "Credit", "id": "salary", "label": "Salary"}, {"group": "Credit", "id": "recurring_credits", "label": "Recurring Credits"}, {"group": "Credit", "id": "loan_credit", "label": "Loan Credit"}, {"group": "Credit", "id": "large_credit", "label": "Large Credits"}]}</script>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="recurring">
+    <h2>Recurring Transactions</h2>
+    <div class="tabs">
+      <button class="active" onclick="tab(event,'rec-dr')">Debits (5)</button>
+      <button  onclick="tab(event,'rec-cr')">Credits (1)</button>
+    </div>
+    
+    <div class="tab-body active" id="rec-dr">
+      <table class="data">
+        <thead><tr><th>Merchant / Party</th><th>Category</th><th>Frequency</th><th>Last Seen</th><th>Next Expected</th><th class="num">Avg Amount</th></tr></thead>
+        <tbody>
+          
+          <tr>
+            <td>PLA5150547202</td>
+            <td><span class="tag emi">EMI</span></td>
+            <td>Monthly · day 1-10</td>
+            <td>05 Feb &#39;26</td>
+            <td>3–13 Mar &#39;26</td>
+            <td class="num dr">2,354</td>
+          </tr>
+          
+          <tr>
+            <td>LM00849846</td>
+            <td><span class="tag emi">EMI</span></td>
+            <td>Recurring · day 1-10</td>
+            <td>05 Oct &#39;25</td>
+            <td>30 Oct – 09 Nov &#39;25</td>
+            <td class="num dr">15,080</td>
+          </tr>
+          
+          <tr>
+            <td>PATELKISHANKUMA</td>
+            <td><span class="tag emi">Self_Transfer</span></td>
+            <td>Ad-hoc · day 25-31</td>
+            <td>30 Oct &#39;25</td>
+            <td>24 Nov – 04 Dec &#39;25</td>
+            <td class="num dr">1,500</td>
+          </tr>
+          
+          <tr>
+            <td>EMI EV</td>
+            <td><span class="tag emi">Self_Transfer</span></td>
+            <td>Ad-hoc · day 26-31</td>
+            <td>31 Oct &#39;25</td>
+            <td>25 Nov – 05 Dec &#39;25</td>
+            <td class="num dr">5,000</td>
+          </tr>
+          
+          <tr>
+            <td>EMI VEHICLE</td>
+            <td><span class="tag emi">Self_Transfer</span></td>
+            <td>Ad-hoc · day 1-6</td>
+            <td>01 Feb &#39;26</td>
+            <td>26 Feb – 08 Mar &#39;26</td>
+            <td class="num dr">2,500</td>
+          </tr>
+          
+        </tbody>
+      </table>
+    </div>
+    
+    
+    <div class="tab-body " id="rec-cr">
+      <table class="data">
+        <thead><tr><th>Source</th><th>Category</th><th>Frequency</th><th>Last Seen</th><th>Next Expected</th><th class="num">Avg Amount</th></tr></thead>
+        <tbody>
+          
+          <tr>
+            <td>Salary Oct 2025</td>
+            <td><span class="tag salary">Self_Transfer</span></td>
+            <td>Monthly · day 25-31</td>
+            <td>27 Feb &#39;26</td>
+            <td>24 Mar – 03 Apr &#39;26</td>
+            <td class="num cr">51,020</td>
+          </tr>
+          
+        </tbody>
+      </table>
+    </div>
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="loans">
+    <h2>Loan Activity <span class="count">Inferred from transactions</span></h2>
+    <div class="tabs">
+      <button class="active" onclick="tab(event,'ln-dr')">Loan EMIs (5)</button>
+      
+    </div>
+    
+    <div class="tab-body active" id="ln-dr">
+      <div class="loan-grid">
+        
+        <div class="loan-card">
+          <div class="head"><b>PLA5150547202</b><div class="amt">₹ 2,354</div></div>
+          <div class="row"><span>EMI Day</span><b>5th</b></div>
+          <div class="row"><span>Months paid</span><b>6 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+        <div class="loan-card">
+          <div class="head"><b>LM00849846</b><div class="amt">₹ 15,080</div></div>
+          <div class="row"><span>EMI Day</span><b>5th</b></div>
+          <div class="row"><span>Months paid</span><b>2 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+        <div class="loan-card">
+          <div class="head"><b>PATELKISHANKUMA</b><div class="amt">₹ 1,500</div></div>
+          <div class="row"><span>EMI Day</span><b>30th</b></div>
+          <div class="row"><span>Months paid</span><b>1 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+        <div class="loan-card">
+          <div class="head"><b>EMI EV</b><div class="amt">₹ 5,000</div></div>
+          <div class="row"><span>EMI Day</span><b>31st</b></div>
+          <div class="row"><span>Months paid</span><b>1 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+        <div class="loan-card">
+          <div class="head"><b>EMI VEHICLE</b><div class="amt">₹ 2,500</div></div>
+          <div class="row"><span>EMI Day</span><b>1st</b></div>
+          <div class="row"><span>Months paid</span><b>1 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="remitters">
+    <h2>Top Remitters</h2>
+    <div class="tabs">
+      <button class="active" onclick="tab(event,'rem-cr')">Credit Sources (2)</button>
+      <button  onclick="tab(event,'rem-dr')">Debit Beneficiaries (5)</button>
+    </div>
+    
+    <div class="tab-body active" id="rem-cr">
+      <div class="remit-grid">
+        <div class="chart-wrap sm"><canvas id="remitCrChart"></canvas></div>
+        <ul class="remit-list">
+          
+          <li><div class="rank">1</div><div><div class="name">EMI EV</div><div class="meta">1 txn</div></div><div class="amt">₹ 5,000</div></li>
+          
+          <li><div class="rank">2</div><div><div class="name">EMI VEHICLE</div><div class="meta">1 txn</div></div><div class="amt">₹ 2,500</div></li>
+          
+        </ul>
+      </div>
+    </div>
+    
+    
+    <div class="tab-body " id="rem-dr">
+      <div class="remit-grid">
+        <div class="chart-wrap sm"><canvas id="remitDrChart"></canvas></div>
+        <ul class="remit-list">
+          
+          <li><div class="rank">1</div><div><div class="name">PATELKISHANKUMA</div><div class="meta">32 txn</div></div><div class="amt">₹ 4,12,800</div></li>
+          
+          <li><div class="rank">2</div><div><div class="name">LM00849846</div><div class="meta">2 txn</div></div><div class="amt">₹ 30,160</div></li>
+          
+          <li><div class="rank">3</div><div><div class="name">PLA5150547202</div><div class="meta">6 txn</div></div><div class="amt">₹ 14,124</div></li>
+          
+          <li><div class="rank">4</div><div><div class="name">EMI EV</div><div class="meta">1 txn</div></div><div class="amt">₹ 5,000</div></li>
+          
+          <li><div class="rank">5</div><div><div class="name">BHOSALE RAJU TA</div><div class="meta">4 txn</div></div><div class="amt">₹ 200</div></li>
+          
+        </ul>
+      </div>
+    </div>
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="txns">
+    <h2>All Transactions <span class="count">61 total · showing 61</span></h2>
+    <div class="tx-tools">
+      <input type="text" id="txSearch" placeholder="Search merchant, narration, amount…" oninput="filterTx()" />
+      <span class="chip on" data-cls="all" onclick="togClass(this)">All</span>
+      <span class="chip" data-cls="salary" onclick="togClass(this)">Salary</span>
+      <span class="chip" data-cls="emi" onclick="togClass(this)">EMI</span>
+      <span class="chip" data-cls="upi" onclick="togClass(this)">UPI</span>
+      <span class="chip" data-cls="fraud" onclick="togClass(this)">Gaming/Fraud</span>
+      <span class="chip" data-cls="inv" onclick="togClass(this)">Investment</span>
+      <span class="chip" data-cls="other" onclick="togClass(this)">Other</span>
+    </div>
+    <table class="data" id="txTable" data-page-size="20">
+      <thead><tr>
+        <th class="sortable" onclick="sortTx('date')" style="cursor:pointer;user-select:none">Date <span class="sort-ind" data-key="date"></span></th>
+        <th>Narration</th>
+        <th>Mode</th>
+        <th>Category</th>
+        <th>Sub-category</th>
+        <th class="num sortable" onclick="sortTx('debit')" style="cursor:pointer;user-select:none">Debit <span class="sort-ind" data-key="debit"></span></th>
+        <th class="num sortable" onclick="sortTx('credit')" style="cursor:pointer;user-select:none">Credit <span class="sort-ind" data-key="credit"></span></th>
+        <th class="num sortable" onclick="sortTx('balance')" style="cursor:pointer;user-select:none">Balance <span class="sort-ind" data-key="balance"></span></th>
+      </tr></thead>
+      <tbody id="txBody">
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/646726101319/payment to 9160 self_transfer self_transfer"
+            data-date="2026-02-28"
+            data-debit="4500.0"
+            data-credit="0"
+            data-balance="-151552.0"
+            data-narr-full="UPI/PATELKISHANKUMA/646726101319/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/646726101319/payment to 9160">
+          <td>28-Feb</td>
+          <td>UPI/PATELKISHANKUMA/646726101319/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">4,500</td>
+          <td class="num cr"></td>
+          <td class="num">-1,51,552</td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary feb 2026 self_transfer self_transfer"
+            data-date="2026-02-27"
+            data-debit="0"
+            data-credit="52161.0"
+            data-balance="-147052.0"
+            data-narr-full="Salary Feb 2026"
+            data-narr-norm="salary feb 2026">
+          <td>27-Feb</td>
+          <td>Salary Feb 2026</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">52,161</td>
+          <td class="num">-1,47,052</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/075772316807/payment to 9160 self_transfer self_transfer"
+            data-date="2026-02-27"
+            data-debit="35000.0"
+            data-credit="0"
+            data-balance="-199213.0"
+            data-narr-full="UPI/PATELKISHANKUMA/075772316807/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/075772316807/payment to 9160">
+          <td>27-Feb</td>
+          <td>UPI/PATELKISHANKUMA/075772316807/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">35,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,99,213</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/743870319627/payment to 0314 self_transfer self_transfer"
+            data-date="2026-02-13"
+            data-debit="2500.0"
+            data-credit="0"
+            data-balance="-164213.0"
+            data-narr-full="UPI/PATELKISHANKUMA/743870319627/Payment to 0314"
+            data-narr-norm="upi/patelkishankuma/743870319627/payment to 0314">
+          <td>13-Feb</td>
+          <td>UPI/PATELKISHANKUMA/743870319627/Payment to 0314</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">2,500</td>
+          <td class="num cr"></td>
+          <td class="num">-1,64,213</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/salim amin atta/299881789978/sent using payt p2p p2p"
+            data-date="2026-02-10"
+            data-debit="50.0"
+            data-credit="0"
+            data-balance="-161713.0"
+            data-narr-full="UPI/SALIM AMIN ATTA/299881789978/Sent using Payt"
+            data-narr-norm="upi/salim amin atta/299881789978/sent using payt">
+          <td>10-Feb</td>
+          <td>UPI/SALIM AMIN ATTA/299881789978/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+          <td class="num">-1,61,713</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/949932209203/payment to 1832 self_transfer self_transfer"
+            data-date="2026-02-06"
+            data-debit="300.0"
+            data-credit="0"
+            data-balance="-161663.0"
+            data-narr-full="UPI/PATELKISHANKUMA/949932209203/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/949932209203/payment to 1832">
+          <td>06-Feb</td>
+          <td>UPI/PATELKISHANKUMA/949932209203/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">300</td>
+          <td class="num cr"></td>
+          <td class="num">-1,61,663</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/142578716217/payment to 1832 self_transfer self_transfer"
+            data-date="2026-02-06"
+            data-debit="8000.0"
+            data-credit="0"
+            data-balance="-161363.0"
+            data-narr-full="UPI/PATELKISHANKUMA/142578716217/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/142578716217/payment to 1832">
+          <td>06-Feb</td>
+          <td>UPI/PATELKISHANKUMA/142578716217/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">8,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,61,363</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/salim amin atta/603659202832/sent using payt p2p p2p"
+            data-date="2026-02-05"
+            data-debit="50.0"
+            data-credit="0"
+            data-balance="-153363.0"
+            data-narr-full="UPI/SALIM AMIN ATTA/603659202832/Sent using Payt"
+            data-narr-norm="upi/salim amin atta/603659202832/sent using payt">
+          <td>05-Feb</td>
+          <td>UPI/SALIM AMIN ATTA/603659202832/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+          <td class="num">-1,53,363</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-pla5150547202-kfaf1x77ql69t5 finance emi"
+            data-date="2026-02-05"
+            data-debit="2354.0"
+            data-credit="0"
+            data-balance="-153313.0"
+            data-narr-full="NACH-10-DR-PLA5150547202-KFAF1X77QL69T5"
+            data-narr-norm="nach-10-dr-pla5150547202-kfaf1x77ql69t5">
+          <td>05-Feb</td>
+          <td>NACH-10-DR-PLA5150547202-KFAF1X77QL69T5</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">2,354</td>
+          <td class="num cr"></td>
+          <td class="num">-1,53,313</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/016790818521/payment to 1832 self_transfer self_transfer"
+            data-date="2026-02-02"
+            data-debit="5000.0"
+            data-credit="0"
+            data-balance="-150959.0"
+            data-narr-full="UPI/PATELKISHANKUMA/016790818521/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/016790818521/payment to 1832">
+          <td>02-Feb</td>
+          <td>UPI/PATELKISHANKUMA/016790818521/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,50,959</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/151160398856/payment to 0314 self_transfer self_transfer"
+            data-date="2026-02-02"
+            data-debit="5000.0"
+            data-credit="0"
+            data-balance="-145959.0"
+            data-narr-full="UPI/PATELKISHANKUMA/151160398856/Payment to 0314"
+            data-narr-norm="upi/patelkishankuma/151160398856/payment to 0314">
+          <td>02-Feb</td>
+          <td>UPI/PATELKISHANKUMA/151160398856/Payment to 0314</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,45,959</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:sent money to own 2411726562/emi vehicle self_transfer self_transfer"
+            data-date="2026-02-01"
+            data-debit="2500.0"
+            data-credit="0"
+            data-balance="-140959.0"
+            data-narr-full="MB:SENT MONEY TO OWN 2411726562/EMI VEHICLE"
+            data-narr-norm="mb:sent money to own 2411726562/emi vehicle">
+          <td>01-Feb</td>
+          <td>MB:SENT MONEY TO OWN 2411726562/EMI VEHICLE</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">2,500</td>
+          <td class="num cr"></td>
+          <td class="num">-1,40,959</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/997062735830/payment to 9160 self_transfer self_transfer"
+            data-date="2026-02-01"
+            data-debit="50000.0"
+            data-credit="0"
+            data-balance="-138459.0"
+            data-narr-full="UPI/PATELKISHANKUMA/997062735830/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/997062735830/payment to 9160">
+          <td>01-Feb</td>
+          <td>UPI/PATELKISHANKUMA/997062735830/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">50,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,38,459</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:received money from own 2411690870/emi vehicle self_transfer self_transfer"
+            data-date="2026-02-01"
+            data-debit="0"
+            data-credit="2500.0"
+            data-balance="-88459.0"
+            data-narr-full="MB:RECEIVED MONEY FROM OWN 2411690870/EMI VEHICLE"
+            data-narr-norm="mb:received money from own 2411690870/emi vehicle">
+          <td>01-Feb</td>
+          <td>MB:RECEIVED MONEY FROM OWN 2411690870/EMI VEHICLE</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">2,500</td>
+          <td class="num">-88,459</td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary jan 2026 salary salary"
+            data-date="2026-01-30"
+            data-debit="0"
+            data-credit="51111.0"
+            data-balance="-90914.0"
+            data-narr-full="Salary Jan 2026"
+            data-narr-norm="salary jan 2026">
+          <td>30-Jan</td>
+          <td>Salary Jan 2026</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Salary</span></td>
+          <td class="cat-l2-cell" data-l2="Salary"><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">51,111</td>
+          <td class="num">-90,914</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/sohail salim sa/603081882987/sent using payt self_transfer self_transfer"
+            data-date="2026-01-30"
+            data-debit="45.0"
+            data-credit="0"
+            data-balance="-90959.0"
+            data-narr-full="UPI/SOHAIL SALIM SA/603081882987/Sent using Payt"
+            data-narr-norm="upi/sohail salim sa/603081882987/sent using payt">
+          <td>30-Jan</td>
+          <td>UPI/SOHAIL SALIM SA/603081882987/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">45</td>
+          <td class="num cr"></td>
+          <td class="num">-90,959</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/395477175998/payment to 0314 self_transfer self_transfer"
+            data-date="2026-01-28"
+            data-debit="27400.0"
+            data-credit="0"
+            data-balance="-142025.0"
+            data-narr-full="UPI/PATELKISHANKUMA/395477175998/Payment to 0314"
+            data-narr-norm="upi/patelkishankuma/395477175998/payment to 0314">
+          <td>28-Jan</td>
+          <td>UPI/PATELKISHANKUMA/395477175998/Payment to 0314</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">27,400</td>
+          <td class="num cr"></td>
+          <td class="num">-1,42,025</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/133933075271/payment to 9160 self_transfer self_transfer"
+            data-date="2026-01-22"
+            data-debit="3000.0"
+            data-credit="0"
+            data-balance="-114625.0"
+            data-narr-full="UPI/PATELKISHANKUMA/133933075271/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/133933075271/payment to 9160">
+          <td>22-Jan</td>
+          <td>UPI/PATELKISHANKUMA/133933075271/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">3,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,14,625</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/326222279307/payment to 0314 self_transfer self_transfer"
+            data-date="2026-01-21"
+            data-debit="16000.0"
+            data-credit="0"
+            data-balance="-111625.0"
+            data-narr-full="UPI/PATELKISHANKUMA/326222279307/Payment to 0314"
+            data-narr-norm="upi/patelkishankuma/326222279307/payment to 0314">
+          <td>21-Jan</td>
+          <td>UPI/PATELKISHANKUMA/326222279307/Payment to 0314</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">16,000</td>
+          <td class="num cr"></td>
+          <td class="num">-1,11,625</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/371766555096/payment to 9160 self_transfer self_transfer"
+            data-date="2026-01-08"
+            data-debit="35000.0"
+            data-credit="0"
+            data-balance="-95625.0"
+            data-narr-full="UPI/PATELKISHANKUMA/371766555096/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/371766555096/payment to 9160">
+          <td>08-Jan</td>
+          <td>UPI/PATELKISHANKUMA/371766555096/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">35,000</td>
+          <td class="num cr"></td>
+          <td class="num">-95,625</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-pla5150547202-3bpan9nj1ht2qb finance emi"
+            data-date="2026-01-05"
+            data-debit="2354.0"
+            data-credit="0"
+            data-balance="-60625.0"
+            data-narr-full="NACH-10-DR-PLA5150547202-3BPAN9NJ1HT2QB"
+            data-narr-norm="nach-10-dr-pla5150547202-3bpan9nj1ht2qb">
+          <td>05-Jan</td>
+          <td>NACH-10-DR-PLA5150547202-3BPAN9NJ1HT2QB</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">2,354</td>
+          <td class="num cr"></td>
+          <td class="num">-60,625</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/415932697382/payment to 1832 self_transfer self_transfer"
+            data-date="2026-01-03"
+            data-debit="2600.0"
+            data-credit="0"
+            data-balance="-58271.0"
+            data-narr-full="UPI/PATELKISHANKUMA/415932697382/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/415932697382/payment to 1832">
+          <td>03-Jan</td>
+          <td>UPI/PATELKISHANKUMA/415932697382/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">2,600</td>
+          <td class="num cr"></td>
+          <td class="num">-58,271</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/802435756957/payment to 1832 self_transfer self_transfer"
+            data-date="2026-01-03"
+            data-debit="1300.0"
+            data-credit="0"
+            data-balance="-55671.0"
+            data-narr-full="UPI/PATELKISHANKUMA/802435756957/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/802435756957/payment to 1832">
+          <td>03-Jan</td>
+          <td>UPI/PATELKISHANKUMA/802435756957/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">1,300</td>
+          <td class="num cr"></td>
+          <td class="num">-55,671</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/348410951234/payment to 9160 self_transfer self_transfer"
+            data-date="2026-01-02"
+            data-debit="10000.0"
+            data-credit="0"
+            data-balance="-54371.0"
+            data-narr-full="UPI/PATELKISHANKUMA/348410951234/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/348410951234/payment to 9160">
+          <td>02-Jan</td>
+          <td>UPI/PATELKISHANKUMA/348410951234/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">10,000</td>
+          <td class="num cr"></td>
+          <td class="num">-54,371</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/642400268940/payment to 1832 self_transfer self_transfer"
+            data-date="2026-01-01"
+            data-debit="5000.0"
+            data-credit="0"
+            data-balance="-44371.0"
+            data-narr-full="UPI/PATELKISHANKUMA/642400268940/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/642400268940/payment to 1832">
+          <td>01-Jan</td>
+          <td>UPI/PATELKISHANKUMA/642400268940/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+          <td class="num">-44,371</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/rekha kansal/536591190390/sent using payt p2p p2p"
+            data-date="2025-12-31"
+            data-debit="150.0"
+            data-credit="0"
+            data-balance="-39371.0"
+            data-narr-full="UPI/REKHA KANSAL/536591190390/Sent using Payt"
+            data-narr-norm="upi/rekha kansal/536591190390/sent using payt">
+          <td>31-Dec</td>
+          <td>UPI/REKHA KANSAL/536591190390/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">150</td>
+          <td class="num cr"></td>
+          <td class="num">-39,371</td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary dec 2025 salary salary"
+            data-date="2025-12-31"
+            data-debit="0"
+            data-credit="51111.0"
+            data-balance="-39221.0"
+            data-narr-full="Salary Dec 2025"
+            data-narr-norm="salary dec 2025">
+          <td>31-Dec</td>
+          <td>Salary Dec 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Salary</span></td>
+          <td class="cat-l2-cell" data-l2="Salary"><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">51,111</td>
+          <td class="num">-39,221</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/791632810632/payment to 9160 self_transfer self_transfer"
+            data-date="2025-12-24"
+            data-debit="50000.0"
+            data-credit="0"
+            data-balance="-90332.0"
+            data-narr-full="UPI/PATELKISHANKUMA/791632810632/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/791632810632/payment to 9160">
+          <td>24-Dec</td>
+          <td>UPI/PATELKISHANKUMA/791632810632/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">50,000</td>
+          <td class="num cr"></td>
+          <td class="num">-90,332</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/875061462972/payment to 0314 self_transfer self_transfer"
+            data-date="2025-12-19"
+            data-debit="11000.0"
+            data-credit="0"
+            data-balance="-40332.0"
+            data-narr-full="UPI/PATELKISHANKUMA/875061462972/Payment to 0314"
+            data-narr-norm="upi/patelkishankuma/875061462972/payment to 0314">
+          <td>19-Dec</td>
+          <td>UPI/PATELKISHANKUMA/875061462972/Payment to 0314</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">11,000</td>
+          <td class="num cr"></td>
+          <td class="num">-40,332</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/riyaz salim pat/695747907995/sent using payt p2p p2p"
+            data-date="2025-12-17"
+            data-debit="25.0"
+            data-credit="0"
+            data-balance="-29332.0"
+            data-narr-full="UPI/RIYAZ SALIM PAT/695747907995/Sent using Payt"
+            data-narr-norm="upi/riyaz salim pat/695747907995/sent using payt">
+          <td>17-Dec</td>
+          <td>UPI/RIYAZ SALIM PAT/695747907995/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">25</td>
+          <td class="num cr"></td>
+          <td class="num">-29,332</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/535117442379/sent using payt p2p p2p"
+            data-date="2025-12-17"
+            data-debit="50.0"
+            data-credit="0"
+            data-balance="-29307.0"
+            data-narr-full="UPI/BHOSALE RAJU TA/535117442379/Sent using Payt"
+            data-narr-norm="upi/bhosale raju ta/535117442379/sent using payt">
+          <td>17-Dec</td>
+          <td>UPI/BHOSALE RAJU TA/535117442379/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+          <td class="num">-29,307</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/arti dipak salu/393701035102/sent using payt p2p p2p"
+            data-date="2025-12-12"
+            data-debit="45.0"
+            data-credit="0"
+            data-balance="-29257.0"
+            data-narr-full="UPI/Arti Dipak Salu/393701035102/Sent using Payt"
+            data-narr-norm="upi/arti dipak salu/393701035102/sent using payt">
+          <td>12-Dec</td>
+          <td>UPI/Arti Dipak Salu/393701035102/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">45</td>
+          <td class="num cr"></td>
+          <td class="num">-29,257</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-pla5150547202-j1i7mu1t37bw7s finance emi"
+            data-date="2025-12-05"
+            data-debit="2354.0"
+            data-credit="0"
+            data-balance="-29212.0"
+            data-narr-full="NACH-10-DR-PLA5150547202-J1I7MU1T37BW7S"
+            data-narr-norm="nach-10-dr-pla5150547202-j1i7mu1t37bw7s">
+          <td>05-Dec</td>
+          <td>NACH-10-DR-PLA5150547202-J1I7MU1T37BW7S</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">2,354</td>
+          <td class="num cr"></td>
+          <td class="num">-29,212</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/839389888373/payment to 9160 self_transfer self_transfer"
+            data-date="2025-12-04"
+            data-debit="6000.0"
+            data-credit="0"
+            data-balance="-26858.0"
+            data-narr-full="UPI/PATELKISHANKUMA/839389888373/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/839389888373/payment to 9160">
+          <td>04-Dec</td>
+          <td>UPI/PATELKISHANKUMA/839389888373/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">6,000</td>
+          <td class="num cr"></td>
+          <td class="num">-26,858</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/787717436978/payment to 1832 self_transfer self_transfer"
+            data-date="2025-12-02"
+            data-debit="5000.0"
+            data-credit="0"
+            data-balance="-20858.0"
+            data-narr-full="UPI/PATELKISHANKUMA/787717436978/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/787717436978/payment to 1832">
+          <td>02-Dec</td>
+          <td>UPI/PATELKISHANKUMA/787717436978/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+          <td class="num">-20,858</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/670597730799/payment to 5010 self_transfer self_transfer"
+            data-date="2025-11-30"
+            data-debit="1500.0"
+            data-credit="0"
+            data-balance="-15858.0"
+            data-narr-full="UPI/PATELKISHANKUMA/670597730799/Payment to 5010"
+            data-narr-norm="upi/patelkishankuma/670597730799/payment to 5010">
+          <td>30-Nov</td>
+          <td>UPI/PATELKISHANKUMA/670597730799/Payment to 5010</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">1,500</td>
+          <td class="num cr"></td>
+          <td class="num">-15,858</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/399104698091/payment to 9160 self_transfer self_transfer"
+            data-date="2025-11-28"
+            data-debit="27000.0"
+            data-credit="0"
+            data-balance="-14358.0"
+            data-narr-full="UPI/PATELKISHANKUMA/399104698091/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/399104698091/payment to 9160">
+          <td>28-Nov</td>
+          <td>UPI/PATELKISHANKUMA/399104698091/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">27,000</td>
+          <td class="num cr"></td>
+          <td class="num">-14,358</td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary nov 2025 salary salary"
+            data-date="2025-11-28"
+            data-debit="0"
+            data-credit="51111.0"
+            data-balance="12642.0"
+            data-narr-full="Salary Nov 2025"
+            data-narr-norm="salary nov 2025">
+          <td>28-Nov</td>
+          <td>Salary Nov 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Salary</span></td>
+          <td class="cat-l2-cell" data-l2="Salary"><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">51,111</td>
+          <td class="num">12,642</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/739258977202/payment to 9160 self_transfer self_transfer"
+            data-date="2025-11-27"
+            data-debit="38000.0"
+            data-credit="0"
+            data-balance="-38469.0"
+            data-narr-full="UPI/PATELKISHANKUMA/739258977202/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/739258977202/payment to 9160">
+          <td>27-Nov</td>
+          <td>UPI/PATELKISHANKUMA/739258977202/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">38,000</td>
+          <td class="num cr"></td>
+          <td class="num">-38,469</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/504626392313/payment to 9160 self_transfer self_transfer"
+            data-date="2025-11-20"
+            data-debit="1000.0"
+            data-credit="0"
+            data-balance="-469.0"
+            data-narr-full="UPI/PATELKISHANKUMA/504626392313/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/504626392313/payment to 9160">
+          <td>20-Nov</td>
+          <td>UPI/PATELKISHANKUMA/504626392313/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">1,000</td>
+          <td class="num cr"></td>
+          <td class="num">-469</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/187641828228/payment to 9160 self_transfer self_transfer"
+            data-date="2025-11-18"
+            data-debit="1200.0"
+            data-credit="0"
+            data-balance="531.0"
+            data-narr-full="UPI/PATELKISHANKUMA/187641828228/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/187641828228/payment to 9160">
+          <td>18-Nov</td>
+          <td>UPI/PATELKISHANKUMA/187641828228/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">1,200</td>
+          <td class="num cr"></td>
+          <td class="num">531</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/562423096667/payment to 9160 self_transfer self_transfer"
+            data-date="2025-11-10"
+            data-debit="13000.0"
+            data-credit="0"
+            data-balance="1731.0"
+            data-narr-full="UPI/PATELKISHANKUMA/562423096667/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/562423096667/payment to 9160">
+          <td>10-Nov</td>
+          <td>UPI/PATELKISHANKUMA/562423096667/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">13,000</td>
+          <td class="num cr"></td>
+          <td class="num">1,731</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/531032301026/sent using payt p2p p2p"
+            data-date="2025-11-06"
+            data-debit="50.0"
+            data-credit="0"
+            data-balance="14731.0"
+            data-narr-full="UPI/BHOSALE RAJU TA/531032301026/Sent using Payt"
+            data-narr-norm="upi/bhosale raju ta/531032301026/sent using payt">
+          <td>06-Nov</td>
+          <td>UPI/BHOSALE RAJU TA/531032301026/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+          <td class="num">14,731</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-pla5150547202-afeqbl7cocscye finance emi"
+            data-date="2025-11-05"
+            data-debit="2354.0"
+            data-credit="0"
+            data-balance="14781.0"
+            data-narr-full="NACH-10-DR-PLA5150547202-AFEQBL7COCSCYE"
+            data-narr-norm="nach-10-dr-pla5150547202-afeqbl7cocscye">
+          <td>05-Nov</td>
+          <td>NACH-10-DR-PLA5150547202-AFEQBL7COCSCYE</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">2,354</td>
+          <td class="num cr"></td>
+          <td class="num">14,781</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/530504058032/payment to 5010 self_transfer self_transfer"
+            data-date="2025-11-01"
+            data-debit="2000.0"
+            data-credit="0"
+            data-balance="22135.0"
+            data-narr-full="UPI/PATELKISHANKUMA/530504058032/Payment to 5010"
+            data-narr-norm="upi/patelkishankuma/530504058032/payment to 5010">
+          <td>01-Nov</td>
+          <td>UPI/PATELKISHANKUMA/530504058032/Payment to 5010</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">2,000</td>
+          <td class="num cr"></td>
+          <td class="num">22,135</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/530504227932/payment to 1832 self_transfer self_transfer"
+            data-date="2025-11-01"
+            data-debit="5000.0"
+            data-credit="0"
+            data-balance="17135.0"
+            data-narr-full="UPI/PATELKISHANKUMA/530504227932/Payment to 1832"
+            data-narr-norm="upi/patelkishankuma/530504227932/payment to 1832">
+          <td>01-Nov</td>
+          <td>UPI/PATELKISHANKUMA/530504227932/Payment to 1832</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+          <td class="num">17,135</td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary oct 2025 salary salary"
+            data-date="2025-10-31"
+            data-debit="0"
+            data-credit="50314.0"
+            data-balance="24135.0"
+            data-narr-full="Salary Oct 2025"
+            data-narr-norm="salary oct 2025">
+          <td>31-Oct</td>
+          <td>Salary Oct 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Salary</span></td>
+          <td class="cat-l2-cell" data-l2="Salary"><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">50,314</td>
+          <td class="num">24,135</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:received money from own 2411690870/emi ev self_transfer self_transfer"
+            data-date="2025-10-31"
+            data-debit="0"
+            data-credit="5000.0"
+            data-balance="-26179.0"
+            data-narr-full="MB:RECEIVED MONEY FROM OWN 2411690870/EMI EV"
+            data-narr-norm="mb:received money from own 2411690870/emi ev">
+          <td>31-Oct</td>
+          <td>MB:RECEIVED MONEY FROM OWN 2411690870/EMI EV</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">5,000</td>
+          <td class="num">-26,179</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:sent money to own 2411726562/emi ev self_transfer self_transfer"
+            data-date="2025-10-31"
+            data-debit="5000.0"
+            data-credit="0"
+            data-balance="-31179.0"
+            data-narr-full="MB:SENT MONEY TO OWN 2411726562/EMI EV"
+            data-narr-norm="mb:sent money to own 2411726562/emi ev">
+          <td>31-Oct</td>
+          <td>MB:SENT MONEY TO OWN 2411726562/EMI EV</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+          <td class="num">-31,179</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="upi/patelkishankuma/530377550886/emi for persona self_transfer self_transfer"
+            data-date="2025-10-30"
+            data-debit="1500.0"
+            data-credit="0"
+            data-balance="-26179.0"
+            data-narr-full="UPI/PATELKISHANKUMA/530377550886/EMI for persona"
+            data-narr-norm="upi/patelkishankuma/530377550886/emi for persona">
+          <td>30-Oct</td>
+          <td>UPI/PATELKISHANKUMA/530377550886/EMI for persona</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">1,500</td>
+          <td class="num cr"></td>
+          <td class="num">-26,179</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/529895608613/payment to 9160 self_transfer self_transfer"
+            data-date="2025-10-25"
+            data-debit="20000.0"
+            data-credit="0"
+            data-balance="-24679.0"
+            data-narr-full="UPI/PATELKISHANKUMA/529895608613/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/529895608613/payment to 9160">
+          <td>25-Oct</td>
+          <td>UPI/PATELKISHANKUMA/529895608613/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">20,000</td>
+          <td class="num cr"></td>
+          <td class="num">-24,679</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/529061057068/sent using payt p2p p2p"
+            data-date="2025-10-17"
+            data-debit="50.0"
+            data-credit="0"
+            data-balance="-4679.0"
+            data-narr-full="UPI/BHOSALE RAJU TA/529061057068/Sent using Payt"
+            data-narr-norm="upi/bhosale raju ta/529061057068/sent using payt">
+          <td>17-Oct</td>
+          <td>UPI/BHOSALE RAJU TA/529061057068/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+          <td class="num">-4,679</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/528246946073/payment to 9160 self_transfer self_transfer"
+            data-date="2025-10-09"
+            data-debit="10000.0"
+            data-credit="0"
+            data-balance="-4629.0"
+            data-narr-full="UPI/PATELKISHANKUMA/528246946073/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/528246946073/payment to 9160">
+          <td>09-Oct</td>
+          <td>UPI/PATELKISHANKUMA/528246946073/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">10,000</td>
+          <td class="num cr"></td>
+          <td class="num">-4,629</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-pla5150547202-nhkm451whd88ix finance emi"
+            data-date="2025-10-05"
+            data-debit="2354.0"
+            data-credit="0"
+            data-balance="5371.0"
+            data-narr-full="NACH-10-DR-PLA5150547202-NHKM451WHD88IX"
+            data-narr-norm="nach-10-dr-pla5150547202-nhkm451whd88ix">
+          <td>05-Oct</td>
+          <td>NACH-10-DR-PLA5150547202-NHKM451WHD88IX</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">2,354</td>
+          <td class="num cr"></td>
+          <td class="num">5,371</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-lm00849846-bz2nsycklj6ska finance emi"
+            data-date="2025-10-05"
+            data-debit="14327.0"
+            data-credit="0"
+            data-balance="7725.0"
+            data-narr-full="NACH-10-DR-LM00849846-BZ2NSYCKLJ6SKA"
+            data-narr-norm="nach-10-dr-lm00849846-bz2nsycklj6ska">
+          <td>05-Oct</td>
+          <td>NACH-10-DR-LM00849846-BZ2NSYCKLJ6SKA</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">14,327</td>
+          <td class="num cr"></td>
+          <td class="num">7,725</td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary sep 2025 salary salary"
+            data-date="2025-09-30"
+            data-debit="0"
+            data-credit="50314.0"
+            data-balance="22052.0"
+            data-narr-full="Salary Sep 2025"
+            data-narr-norm="salary sep 2025">
+          <td>30-Sep</td>
+          <td>Salary Sep 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Salary</span></td>
+          <td class="cat-l2-cell" data-l2="Salary"><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">50,314</td>
+          <td class="num">22,052</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/389987579150/sent using payt p2p p2p"
+            data-date="2025-09-28"
+            data-debit="50.0"
+            data-credit="0"
+            data-balance="-28262.0"
+            data-narr-full="UPI/BHOSALE RAJU TA/389987579150/Sent using Payt"
+            data-narr-norm="upi/bhosale raju ta/389987579150/sent using payt">
+          <td>28-Sep</td>
+          <td>UPI/BHOSALE RAJU TA/389987579150/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+          <td class="num">-28,262</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-lm00849846-rgn92pn3qphdjb finance emi"
+            data-date="2025-09-05"
+            data-debit="15833.0"
+            data-credit="0"
+            data-balance="-25858.0"
+            data-narr-full="NACH-10-DR-LM00849846-RGN92PN3QPHDJB"
+            data-narr-norm="nach-10-dr-lm00849846-rgn92pn3qphdjb">
+          <td>05-Sep</td>
+          <td>NACH-10-DR-LM00849846-RGN92PN3QPHDJB</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">15,833</td>
+          <td class="num cr"></td>
+          <td class="num">-25,858</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="nach-10-dr-pla5150547202-1hz2q8gduvfkne finance emi"
+            data-date="2025-09-05"
+            data-debit="2354.0"
+            data-credit="0"
+            data-balance="-28212.0"
+            data-narr-full="NACH-10-DR-PLA5150547202-1HZ2Q8GDUVFKNE"
+            data-narr-norm="nach-10-dr-pla5150547202-1hz2q8gduvfkne">
+          <td>05-Sep</td>
+          <td>NACH-10-DR-PLA5150547202-1HZ2Q8GDUVFKNE</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Finance</span></td>
+          <td class="cat-l2-cell" data-l2="EMI"><span class="tag cat">EMI</span></td>
+          <td class="num dr">2,354</td>
+          <td class="num cr"></td>
+          <td class="num">-28,212</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/anil baban salu/690031421677/sent using payt p2p p2p"
+            data-date="2025-09-02"
+            data-debit="25.0"
+            data-credit="0"
+            data-balance="-10025.0"
+            data-narr-full="UPI/ANIL BABAN SALU/690031421677/Sent using Payt"
+            data-narr-norm="upi/anil baban salu/690031421677/sent using payt">
+          <td>02-Sep</td>
+          <td>UPI/ANIL BABAN SALU/690031421677/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">P2P</span></td>
+          <td class="cat-l2-cell" data-l2="P2P"><span class="tag cat">P2P</span></td>
+          <td class="num dr">25</td>
+          <td class="num cr"></td>
+          <td class="num">-10,025</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/patelkishankuma/524520164265/payment to 9160 self_transfer self_transfer"
+            data-date="2025-09-02"
+            data-debit="10000.0"
+            data-credit="0"
+            data-balance="-10000.0"
+            data-narr-full="UPI/PATELKISHANKUMA/524520164265/Payment to 9160"
+            data-narr-norm="upi/patelkishankuma/524520164265/payment to 9160">
+          <td>02-Sep</td>
+          <td>UPI/PATELKISHANKUMA/524520164265/Payment to 9160</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td class="cat-l1-cell"><span class="tag cat">Self_Transfer</span></td>
+          <td class="cat-l2-cell" data-l2="Self_Transfer"><span class="tag cat">Self_Transfer</span></td>
+          <td class="num dr">10,000</td>
+          <td class="num cr"></td>
+          <td class="num">-10,000</td>
+        </tr>
+        
+      </tbody>
+    </table>
+    <div class="tx-pager" id="txPager" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:10px;font-size:12px;color:var(--muted)">
+      <div id="txPagerInfo"></div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <button class="btn" id="txPagerPrev" onclick="pageTx(-1)" style="padding:4px 10px">‹ Prev</button>
+        <span id="txPagerPages" style="display:inline-flex;gap:4px"></span>
+        <button class="btn" id="txPagerNext" onclick="pageTx(1)" style="padding:4px 10px">Next ›</button>
+      </div>
+    </div>
+  </div>
+  
+
+  <div class="foot">Generated Last 6 months · BANK_ANALYSER v2</div>
+</div>
+
+<div class="notepad" id="notepad">
+  <div class="head">
+    <span class="icon">📝</span>
+    <span class="lbl">Review Notes</span>
+    <span class="ctx" id="notepadCtx" title="Section currently in view">—</span>
+    <button class="x" onclick="hideNotepad()" title="Hide (your notes stay saved)" aria-label="Hide notepad">×</button>
+  </div>
+  <textarea id="notepadText" placeholder="Jot anything here while you scroll. Auto-saves locally; download as .md or .json from the Notes ⤓ button up top."></textarea>
+  <div class="foot">
+    <button class="insert" onclick="insertSectionTag()" title="Insert the current section as a heading">+ insert section heading</button>
+    <span class="ts" id="notepadTs"></span>
+  </div>
+</div>
+<button class="notepad-tab" id="notepadTab" onclick="showNotepad()" title="Open review notes" aria-label="Open notepad">📝 Add review notes <span class="dot" id="notepadTabDot" style="display:none"></span></button>
+<div class="notepad-hint" id="notepadHint" role="status">
+  <button class="x" onclick="dismissNotepadHint()" aria-label="Dismiss hint">×</button>
+  Jot review notes here while you scroll. Auto-saves to this browser; export from <b>E-Mail ⤓</b>.
+</div>
+
+<button class="back-to-top" id="backToTop" onclick="scrollToTop()" title="Back to top" aria-label="Back to top">↑</button>
+
+
+<script id="risk-trail-data" type="application/json">
+{"cashflow": {"balances": [22052.0, 24135.0, -15858.0, -39371.0, -90959.0, -151552.0], "credits": [50314.0, 55314.0, 51111.0, 51111.0, 51111.0, 54661.0], "debits": [-28262.0, -53231.0, -91104.0, -74624.0, -102699.0, -115254.0], "max_credits": [50314.0, 50314.0, 51111.0, 51111.0, 51111.0, 52161.0], "max_debits": [-15833.0, -20000.0, -38000.0, -50000.0, -35000.0, -50000.0], "median_credits": [50314.0, 27657.0, 51111.0, 51111.0, 51111.0, 27330.0], "median_debits": [-2354.0, -5000.0, -2177.0, -2354.0, -4000.0, -3500.0], "months": ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "spikes": ["2026-02"]}, "checks": {"fcu": [{"checked": false, "color": "neutral", "detail": null, "label": "Post-disbursement fund diversion"}, {"checked": false, "color": "neutral", "detail": null, "label": "Big debits after salary credit (\u226540% within 3d)"}, {"checked": true, "color": "amber", "detail": "2 counterparties on both sides \u2014 top: EMI EV (\u20b95,000 in / \u20b95,000 out)", "label": "Counterparties on both credit \u0026 debit"}, {"checked": false, "color": "neutral", "detail": null, "label": "Land purchase payments"}, {"checked": true, "color": "neutral", "detail": "8 total (8 debits, 0 credits)", "label": "Automated (NACH/mandate) transactions"}, {"checked": false, "color": "neutral", "detail": null, "label": "Payment mode distribution shift"}], "fraud": [{"checked": false, "color": "green", "detail": null, "label": "Circular entry (mirror credit/debit)"}, {"checked": false, "color": "neutral", "detail": null, "label": "ATM withdrawals elevated"}, {"checked": true, "color": "amber", "detail": "Salary Feb 2026: \u20b952,161 (credit); PATELKISHANKUMA: \u20b950,000 (debit); PATELKISHANKUMA: \u20b950,000 (debit); PATELKISHANKUMA: \u20b938,000 (debit)", "label": "Transactions above 95th percentile"}], "risk": [{"checked": false, "color": "neutral", "detail": null, "label": "ECS / NACH bounces"}, {"checked": false, "color": "neutral", "detail": null, "label": "Loan disbursement detected"}, {"checked": true, "color": "green", "detail": "\u20b951,020 avg (6 transactions)", "label": "Salary detected in banking"}, {"checked": true, "color": "amber", "detail": "\u20b926,434 total across 5 lender(s)", "label": "EMI obligations present"}, {"checked": true, "color": "amber", "detail": "Ongoing (6 months): NACH mandate / SPLN EMI debit \u2014 avg \u20b95,536/month (NACH-10-DR-PLA5150547202-3BPAN9NJ1HT2QB)", "label": "NACH mandate EMI detected"}, {"checked": false, "color": "neutral", "detail": null, "label": "Rent payments present"}, {"checked": false, "color": "neutral", "detail": null, "label": "Credit card bill payments"}, {"checked": true, "color": "amber", "detail": "4 new: REKHA KANSAL, SALIM AMIN ATTA, Arti Dipak Salu", "label": "Emerging merchants detected"}], "summary": "17 checks \u00b7 0 red \u00b7 5 amber"}, "credit_remitters": {"amounts": [5000.0, 2500.0], "labels": ["EMI EV", "EMI VEHICLE"], "rows": [{"amount": 5000.0, "meta": "1 txn", "name": "EMI EV", "rank": 1}, {"amount": 2500.0, "meta": "1 txn", "name": "EMI VEHICLE", "rank": 2}]}, "customer_id": 698167220, "debit_beneficiaries": {"amounts": [412800.0, 30160.0, 14124.0, 5000.0, 200.0], "labels": ["PATELKISHANKUMA", "LM00849846", "PLA5150547202", "EMI EV", "BHOSALE RAJU TA"], "rows": [{"amount": 412800.0, "meta": "32 txn", "name": "PATELKISHANKUMA", "rank": 1}, {"amount": 30160.0, "meta": "2 txn", "name": "LM00849846", "rank": 2}, {"amount": 14124.0, "meta": "6 txn", "name": "PLA5150547202", "rank": 3}, {"amount": 5000.0, "meta": "1 txn", "name": "EMI EV", "rank": 4}, {"amount": 200.0, "meta": "4 txn", "name": "BHOSALE RAJU TA", "rank": 5}]}, "kpis": {"balance": {"avg": -41926.0, "labels": ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "max": 24135.0, "min": -199213.0, "series": [22052.0, 24135.0, -15858.0, -39371.0, -90959.0, -151552.0]}, "emi": {"count": 5, "pct_salary": 51.8, "rag": "red", "total": 26434.0}, "net_cashflow": {"labels": ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"], "negative_months": ["2025-11", "2025-12", "2026-01", "2026-02"], "rag": "red", "series": [22052.0, 2083.0, -39993.0, -23513.0, -51588.0, -60593.0], "total": -151552.0}, "salary": {"avg_amount": 51020.0, "frequency": 6, "months_total": 6, "rag": "green", "strip": [{"label": "S", "status": "ok", "title": "Sep \u002725"}, {"label": "O", "status": "ok", "title": "Oct \u002725"}, {"label": "N", "status": "ok", "title": "Nov \u002725"}, {"label": "D", "status": "ok", "title": "Dec \u002725"}, {"label": "J", "status": "ok", "title": "Jan \u002726"}, {"label": "F", "status": "ok", "title": "Feb \u002726"}]}, "stress": {"drivers": ["Confirm income source from employer or IT returns"], "label": "LOW", "rag": "green", "score": 95}}, "loan_disbursals": null, "loans": [{"amount": 2354.0, "bounces": 0, "bounces_color": "green", "emi_day": "5th", "months_paid": 6, "months_total": 6, "name": "PLA5150547202"}, {"amount": 15080.0, "bounces": 0, "bounces_color": "green", "emi_day": "5th", "months_paid": 2, "months_total": 6, "name": "LM00849846"}, {"amount": 1500.0, "bounces": 0, "bounces_color": "green", "emi_day": "30th", "months_paid": 1, "months_total": 6, "name": "PATELKISHANKUMA"}, {"amount": 5000.0, "bounces": 0, "bounces_color": "green", "emi_day": "31st", "months_paid": 1, "months_total": 6, "name": "EMI EV"}, {"amount": 2500.0, "bounces": 0, "bounces_color": "green", "emi_day": "1st", "months_paid": 1, "months_total": 6, "name": "EMI VEHICLE"}], "period": "Last 6 months", "recurring_credits": [{"avg_amount": 51020.0, "category": "Self_Transfer", "category_class": "salary", "frequency": "Monthly \u00b7 day 25-31", "last_seen": "27 Feb \u002726", "name": "Salary Oct 2025", "next_expected": "24 Mar \u2013 03 Apr \u002726"}], "recurring_debits": [{"avg_amount": 2354.0, "category": "EMI", "category_class": "emi", "frequency": "Monthly \u00b7 day 1-10", "last_seen": "05 Feb \u002726", "name": "PLA5150547202", "next_expected": "3\u201313 Mar \u002726"}, {"avg_amount": 15080.0, "category": "EMI", "category_class": "emi", "frequency": "Recurring \u00b7 day 1-10", "last_seen": "05 Oct \u002725", "name": "LM00849846", "next_expected": "30 Oct \u2013 09 Nov \u002725"}, {"avg_amount": 1500.0, "category": "Self_Transfer", "category_class": "emi", "frequency": "Ad-hoc \u00b7 day 25-31", "last_seen": "30 Oct \u002725", "name": "PATELKISHANKUMA", "next_expected": "24 Nov \u2013 04 Dec \u002725"}, {"avg_amount": 5000.0, "category": "Self_Transfer", "category_class": "emi", "frequency": "Ad-hoc \u00b7 day 26-31", "last_seen": "31 Oct \u002725", "name": "EMI EV", "next_expected": "25 Nov \u2013 05 Dec \u002725"}, {"avg_amount": 2500.0, "category": "Self_Transfer", "category_class": "emi", "frequency": "Ad-hoc \u00b7 day 1-6", "last_seen": "01 Feb \u002726", "name": "EMI VEHICLE", "next_expected": "26 Feb \u2013 08 Mar \u002726"}], "summary": {"has_more": true, "rest": "This translates to a stretched obligation-to-income ratio of 51.8%, indicating that their income is barely covering their essential expenses. The customer\u0027s spending categories reveal some concerning trends. The largest portion of their expenditure goes towards self-transfers (420,345 INR), followed by finance and peer-to-peer transactions (545 INR). This suggests a high level of financial risk-taking, with a significant proportion of their income being diverted towards non-essential expenses. Furthermore, the customer\u0027s EMI payments are visible, indicating that they have taken on debt to purchase a vehicle. The customer\u0027s merchant behavior is also noteworthy. The most frequent merchant is PATELKISHANKUMA, which accounts for 32 transactions and \u20b9412,800 in spending. Additionally, there are regular merchants such as Salary Oct 2025, BHOSALE RAJU TA, PLA5150547202, and LM00849846, among others. The customer\u0027s favourite debit merchants include PLA5150547202 and LM00849846, while their favourite credit merchant is Salary Oct 2025. Notably, the customer has received high amounts of salary income from employer credits, with one instance in Jan 2026 where \u20b951,111 was received and spent within 3 days at a rate of 122%.", "teaser": "The customer\u0027s banking profile presents a mixed picture. Their average monthly cash flow shows an inflow of \u20b9313,622 and outflow of \u20b9465,174, resulting in an average net deficit of \u20b9151,552 per month."}, "verdict": {"label": "LOW RISK", "rag": "green"}}
+</script>
+
+<script>
+  // ---- TABS / SUMMARY TOGGLE ------------------------------------------------
+  function tab(e, id){
+    const wrap = e.target.closest('.panel');
+    wrap.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    wrap.querySelectorAll('.tab-body').forEach(b=>b.classList.remove('active'));
+    const target = wrap.querySelector('#'+id);
+    if(target) target.classList.add('active');
+  }
+  function toggleSummary(){ const s=document.getElementById('sum'); if(s) s.classList.toggle('clamped'); }
+
+  // ---- BACK-TO-TOP ----------------------------------------------------------
+  function scrollToTop(){ window.scrollTo({top:0, behavior:'smooth'}); }
+  (function(){
+    const btn = document.getElementById('backToTop');
+    if(!btn) return;
+    const onScroll = () => btn.classList.toggle('visible', window.scrollY > 400);
+    window.addEventListener('scroll', onScroll, {passive:true});
+    onScroll();
+  })();
+
+  // ---- ANALYST NOTEPAD (single floating panel, follows scroll) -------------
+  const NOTE_SECTIONS = {
+    kpis:      'Overview',
+    checks:    'Risk · FCU · Fraud',
+    summary:   'Banking Summary',
+    cashflow:  'Cashflow & Balance',
+    recurring: 'Recurring Transactions',
+    loans:     'Loan Activity',
+    remitters: 'Top Remitters',
+    txns:      'Transactions'
+  };
+  const NOTES_CUSTOMER = 698167220;
+  const NOTES_KEY = 'bank_v2_notepad::' + NOTES_CUSTOMER;
+  const NOTES_VIS_KEY = 'bank_v2_notepad_visible::' + NOTES_CUSTOMER;
+  const NOTES_INTRO_KEY = 'bank_v2_notepad_intro_seen';
+
+  function loadNote(){
+    try { return JSON.parse(localStorage.getItem(NOTES_KEY) || 'null'); } catch(e){ return null; }
+  }
+  function saveNote(text){
+    try {
+      if (!text || !text.trim()) localStorage.removeItem(NOTES_KEY);
+      else localStorage.setItem(NOTES_KEY, JSON.stringify({
+        customer_id: NOTES_CUSTOMER,
+        note: text,
+        updated_at: new Date().toISOString()
+      }));
+    } catch(e){ console.warn('localStorage write failed', e); }
+    updateNotesUI();
+  }
+
+  // Topmost section currently in view, used as breadcrumb context only.
+  function currentSectionId(){
+    const ids = Object.keys(NOTE_SECTIONS);
+    let active = ids[0];
+    const threshold = 140;
+    for (const id of ids){
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const top = el.getBoundingClientRect().top;
+      if (top <= threshold) active = id;
+    }
+    return active;
+  }
+
+  function showNotepad(){
+    const pad = document.getElementById('notepad');
+    const tab = document.getElementById('notepadTab');
+    if (pad) pad.classList.remove('hidden');
+    if (tab) tab.classList.remove('visible');
+    try { localStorage.setItem(NOTES_VIS_KEY, '1'); } catch(e){}
+    setTimeout(() => { const ta = document.getElementById('notepadText'); if (ta) ta.focus(); }, 250);
+  }
+  function hideNotepad(){
+    const pad = document.getElementById('notepad');
+    const tab = document.getElementById('notepadTab');
+    if (pad) pad.classList.add('hidden');
+    if (tab) tab.classList.add('visible');
+    try { localStorage.setItem(NOTES_VIS_KEY, '0'); } catch(e){}
+  }
+
+  function insertSectionTag(){
+    const ta = document.getElementById('notepadText');
+    if (!ta) return;
+    const id = currentSectionId();
+    const heading = '\n\n## ' + (NOTE_SECTIONS[id] || id) + '\n';
+    const before = ta.value.slice(0, ta.selectionStart);
+    const after = ta.value.slice(ta.selectionEnd);
+    ta.value = (before.trimEnd() + heading + after).replace(/^\n+/, '');
+    ta.focus();
+    onNoteInput();
+  }
+
+  let noteSaveTimer = null;
+  function onNoteInput(){
+    const ta = document.getElementById('notepadText');
+    const ts = document.getElementById('notepadTs');
+    if (!ta) return;
+    clearTimeout(noteSaveTimer);
+    noteSaveTimer = setTimeout(() => {
+      saveNote(ta.value);
+      if (ts) ts.textContent = ta.value.trim() ? 'Saved just now' : '';
+    }, 350);
+  }
+
+  function clearAllNotes(){
+    const data = loadNote();
+    if (!data) return;
+    if (!confirm('Clear the review notes for this customer? This cannot be undone.')) return;
+    saveNote('');
+    const ta = document.getElementById('notepadText');
+    if (ta) ta.value = '';
+    const ts = document.getElementById('notepadTs');
+    if (ts) ts.textContent = '';
+    closeNotesMenu();
+  }
+
+  function downloadNotes(format){
+    const data = loadNote();
+    if (!data || !data.note || !data.note.trim()){ alert('No notes to download.'); return; }
+    const stamp = new Date().toISOString().slice(0,10);
+    let blob, filename;
+    if (format === 'json'){
+      blob = new Blob([JSON.stringify({...data, exported_at: new Date().toISOString()}, null, 2)], {type:'application/json'});
+      filename = `notes_${NOTES_CUSTOMER}_${stamp}.json`;
+    } else {
+      const md =
+        `# Review Notes — Customer ${NOTES_CUSTOMER}\n\n` +
+        `_Exported ${new Date().toLocaleString()} · last saved ${new Date(data.updated_at).toLocaleString()}_\n\n` +
+        data.note.trim() + '\n';
+      blob = new Blob([md], {type:'text/markdown'});
+      filename = `notes_${NOTES_CUSTOMER}_${stamp}.md`;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { URL.revokeObjectURL(url); a.remove(); }, 0);
+    closeNotesMenu();
+  }
+
+  function updateNotesUI(){
+    const data = loadNote();
+    const has = !!(data && data.note && data.note.trim());
+    const btn = document.getElementById('notesDownloadBtn');
+    const badge = document.getElementById('notesCount');
+    const tabDot = document.getElementById('notepadTabDot');
+    if (btn) btn.disabled = !has;
+    if (badge){
+      badge.textContent = has ? '●' : '';
+      badge.style.display = has ? 'inline-block' : 'none';
+    }
+    if (tabDot) tabDot.style.display = has ? 'inline-block' : 'none';
+  }
+
+  function toggleNotesMenu(ev){
+    if (ev) ev.stopPropagation();
+    const m = document.getElementById('notesMenu');
+    if (!m || m.querySelector('button.btn').disabled) return;
+    m.classList.toggle('open');
+  }
+  function closeNotesMenu(){
+    const m = document.getElementById('notesMenu');
+    if (m) m.classList.remove('open');
+  }
+  function toggleExportMenu(ev){
+    if (ev) ev.stopPropagation();
+    const m = document.getElementById('exportMenu');
+    if (m) m.classList.toggle('open');
+  }
+  function closeExportMenu(){
+    const m = document.getElementById('exportMenu');
+    if (m) m.classList.remove('open');
+  }
+  document.addEventListener('click', (e) => {
+    const m = document.getElementById('notesMenu');
+    if (m && !m.contains(e.target)) closeNotesMenu();
+    const x = document.getElementById('exportMenu');
+    if (x && !x.contains(e.target)) closeExportMenu();
+  });
+
+  function refreshNotepadCtx(){
+    const ctx = document.getElementById('notepadCtx');
+    if (!ctx) return;
+    const id = currentSectionId();
+    ctx.textContent = NOTE_SECTIONS[id] || '—';
+  }
+
+  function dismissNotepadHint(){
+    const h = document.getElementById('notepadHint');
+    if (h) h.classList.remove('visible');
+    try { localStorage.setItem(NOTES_INTRO_KEY, '1'); } catch(e){}
+  }
+
+  function playNotepadIntro(){
+    let seen = false;
+    try { seen = localStorage.getItem(NOTES_INTRO_KEY) === '1'; } catch(e){}
+    if (seen) return;
+    // Force open on first-ever visit so the analyst sees it.
+    showNotepad();
+    const pad = document.getElementById('notepad');
+    const tab = document.getElementById('notepadTab');
+    const hint = document.getElementById('notepadHint');
+    if (pad){
+      pad.classList.add('intro-pulse');
+      setTimeout(() => pad.classList.remove('intro-pulse'), 5000);
+    }
+    if (tab){
+      tab.classList.add('intro-pulse');
+      setTimeout(() => tab.classList.remove('intro-pulse'), 5000);
+    }
+    if (hint){
+      hint.classList.add('visible');
+      setTimeout(() => { if (hint.classList.contains('visible')) dismissNotepadHint(); }, 8000);
+    }
+  }
+
+  function initNotes(){
+    const ta = document.getElementById('notepadText');
+    const ts = document.getElementById('notepadTs');
+    const data = loadNote();
+    if (ta && data && data.note){
+      ta.value = data.note;
+      if (ts) ts.textContent = 'Saved ' + new Date(data.updated_at).toLocaleString();
+    }
+    if (ta) ta.addEventListener('input', onNoteInput);
+    if (ta) ta.addEventListener('focus', dismissNotepadHint);
+    // Restore visibility preference (default = visible)
+    let visible = true;
+    try { visible = localStorage.getItem(NOTES_VIS_KEY) !== '0'; } catch(e){}
+    if (!visible) hideNotepad();
+    refreshNotepadCtx();
+    window.addEventListener('scroll', refreshNotepadCtx, {passive:true});
+    updateNotesUI();
+    playNotepadIntro();
+  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initNotes);
+  else initNotes();
+
+  // ---- RISK TRAIL JSON EXPORT ----------------------------------------------
+  function downloadRiskTrail(){
+    try{
+      const node = document.getElementById('risk-trail-data');
+      if(!node) return;
+      const payload = JSON.parse(node.textContent || '{}');
+      payload._exported_at = new Date().toISOString();
+      const blob = new Blob([JSON.stringify(payload, null, 2)], {type:'application/json'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cust = payload.customer_id || 'customer';
+      const stamp = new Date().toISOString().slice(0,10);
+      a.href = url; a.download = `risk_trail_${cust}_${stamp}.json`;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }catch(e){ console.error('risk trail export failed', e); alert('Risk trail export failed — see console.'); }
+  }
+
+  // ---- RISK TRAIL CSV EXPORT ------------------------------------------------
+  function exportRiskTrailCSV(){
+    try{
+      const node = document.getElementById('risk-trail-data');
+      if(!node) return;
+      const payload = JSON.parse(node.textContent || '{}');
+      const rows = [];
+      const esc = v => {
+        if (v === null || v === undefined) return '';
+        const s = typeof v === 'object' ? JSON.stringify(v) : String(v);
+        return /[",\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+      };
+      const flatten = (obj, prefix) => {
+        if (obj === null || obj === undefined) { rows.push([prefix, '']); return; }
+        if (Array.isArray(obj)) {
+          obj.forEach((v, i) => flatten(v, `${prefix}[${i}]`));
+          return;
+        }
+        if (typeof obj === 'object') {
+          for (const k of Object.keys(obj)) flatten(obj[k], prefix ? `${prefix}.${k}` : k);
+          return;
+        }
+        rows.push([prefix, obj]);
+      };
+      flatten(payload, '');
+      const csv = ['key,value', ...rows.map(r => `${esc(r[0])},${esc(r[1])}`)].join('\n');
+      const blob = new Blob([csv], {type:'text/csv'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const cust = payload.customer_id || 'customer';
+      const stamp = new Date().toISOString().slice(0,10);
+      a.href = url; a.download = `risk_trail_${cust}_${stamp}.csv`;
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }catch(e){ console.error('CSV export failed', e); alert('CSV export failed — see console.'); }
+  }
+
+  const baseOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:11}}}}};
+
+  // ---- KPI SPARKLINES -------------------------------------------------------
+  
+  new Chart(document.getElementById('sparkBal'),{
+    type:'line',
+    data:{labels:["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"],datasets:[{data:[22052.0, 24135.0, -15858.0, -39371.0, -90959.0, -151552.0],borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.12)',fill:true,tension:.35,pointRadius:0,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+  
+
+  
+  new Chart(document.getElementById('sparkNet'),{
+    type:'bar',
+    data:{labels:["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"],datasets:[{data:[22052.0, 2083.0, -39993.0, -23513.0, -51588.0, -60593.0],backgroundColor:(c)=>c.raw<0?'#ef4444':'#10b981'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+  
+
+  // ---- CASHFLOW MAIN CHART --------------------------------------------------
+  
+  (function(){
+    const cf = {
+      months: ["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"],
+      credits: [50314.0, 55314.0, 51111.0, 51111.0, 51111.0, 54661.0],
+      debits: [-28262.0, -53231.0, -91104.0, -74624.0, -102699.0, -115254.0],
+      balances: [22052.0, 24135.0, -15858.0, -39371.0, -90959.0, -151552.0],
+      maxCredits: [50314.0, 50314.0, 51111.0, 51111.0, 51111.0, 52161.0],
+      maxDebits: [-15833.0, -20000.0, -38000.0, -50000.0, -35000.0, -50000.0],
+      medCredits: [50314.0, 27657.0, 51111.0, 51111.0, 51111.0, 27330.0],
+      medDebits: [-2354.0, -5000.0, -2177.0, -2354.0, -4000.0, -3500.0]
+    };
+    const hasBal = cf.balances && cf.balances.some(v => v !== null && v !== undefined);
+    const datasets = [
+      {type:'bar',label:'Credits',data:cf.credits,backgroundColor:'#10b981',stack:'a'},
+      {type:'bar',label:'Debits',data:cf.debits,backgroundColor:'#ef4444',stack:'a'}
+    ];
+    if (hasBal) {
+      datasets.push({type:'line',label:'Closing Balance',data:cf.balances,borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.15)',fill:false,tension:.35,yAxisID:'y1',borderWidth:3,pointRadius:4,spanGaps:true});
+    }
+    // Per-txn trend lines (hidden by default). Plot on flow axis (y).
+    const trendBase = {type:'line',fill:false,tension:.3,borderWidth:2,pointRadius:3,spanGaps:false,hidden:true};
+    const trends = {
+      mc:   Object.assign({}, trendBase, {label:'Max Credit',     data:cf.maxCredits, borderColor:'#059669', borderDash:[6,3]}),
+      md:   Object.assign({}, trendBase, {label:'Max Debit',      data:cf.maxDebits,  borderColor:'#b91c1c', borderDash:[6,3]}),
+      medc: Object.assign({}, trendBase, {label:'Median Credit',  data:cf.medCredits, borderColor:'#34d399', borderDash:[2,3]}),
+      medd: Object.assign({}, trendBase, {label:'Median Debit',   data:cf.medDebits,  borderColor:'#fb7185', borderDash:[2,3]})
+    };
+    const trendOrder = ['mc','md','medc','medd'];
+    const trendIndex = {};
+    trendOrder.forEach(k => { trendIndex[k] = datasets.length; datasets.push(trends[k]); });
+    const scales = {y:{stacked:true,title:{display:true,text:'Flow (₹)'}}};
+    if (hasBal) scales.y1 = {position:'right',grid:{display:false},title:{display:true,text:'Balance (₹)'}};
+    const chart = new Chart(document.getElementById('cashChart'),{
+      data:{labels:cf.months,datasets:datasets},
+      options:Object.assign({}, baseOpts, {scales:scales})
+    });
+    // Wire checkbox toolbar
+    document.querySelectorAll('[data-cf-series]').forEach(cb => {
+      cb.addEventListener('change', () => {
+        const key = cb.getAttribute('data-cf-series');
+        const idx = (key in trendIndex) ? trendIndex[key] : parseInt(key, 10);
+        if (Number.isNaN(idx) || idx >= datasets.length) return;
+        chart.setDatasetVisibility(idx, cb.checked);
+        chart.update();
+      });
+    });
+  })();
+  
+
+  // ---- ANALYSIS PANEL --------------------------------------------------------
+  
+  (function(){
+    const node = document.getElementById('analysis-data');
+    if (!node) return;
+    let data; try { data = JSON.parse(node.textContent); } catch(e){ return; }
+    const STORE_KEY = 'bank_v2_analysis::698167220';
+    const PALETTE = ['#6366f1','#ef4444','#10b981','#f59e0b','#06b6d4','#a855f7','#f43f5e','#84cc16','#0ea5e9','#fb923c'];
+    const labelOf = id => (data.vars.find(v => v.id===id) || {}).label || id;
+
+    let state = {grain:'monthly', mode:'mixed', sel:[]};
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+      if (saved && saved.sel) state = Object.assign(state, saved);
+    } catch(e){}
+    if (!state.sel.length) {
+      (data.defaults || []).forEach(id => state.sel.push({id, kind:'amt'}));
+    }
+
+    const chartEl = document.getElementById('anChart');
+    const empty = document.getElementById('anEmpty');
+    let chart = null;
+
+    function persist(){ try{ localStorage.setItem(STORE_KEY, JSON.stringify(state)); }catch(e){} }
+    function syncPills(){
+      document.querySelectorAll('#anGrain .an-pill').forEach(p => p.classList.toggle('active', p.dataset.grain===state.grain));
+      document.querySelectorAll('#anMode .an-pill').forEach(p => p.classList.toggle('active', p.dataset.mode===state.mode));
+    }
+    function syncBoxes(){
+      document.querySelectorAll('[data-an-var]').forEach(cb => {
+        const id = cb.dataset.anVar, kind = cb.dataset.anKind;
+        const allowed = state.mode==='mixed' || state.mode===kind;
+        cb.disabled = !allowed;
+        cb.parentElement.style.opacity = allowed ? 1 : 0.35;
+        cb.checked = allowed && state.sel.some(s => s.id===id && s.kind===kind);
+      });
+    }
+    function effectiveSel(){
+      return state.sel.filter(s => state.mode==='mixed' || state.mode===s.kind);
+    }
+    function rebuild(){
+      const g = data.grains[state.grain] || {buckets:[], series:{}};
+      const labels = g.buckets;
+      const sel = effectiveSel();
+      if (!sel.length){
+        if (chart){ chart.destroy(); chart=null; }
+        chartEl.style.display='none'; empty.style.display='block'; return;
+      }
+      chartEl.style.display=''; empty.style.display='none';
+      const datasets = sel.map((s, i) => {
+        const col = PALETTE[i % PALETTE.length];
+        const ser = (g.series[s.id] || {});
+        const arr = s.kind==='amt' ? (ser.amt||[]) : (ser.count||[]);
+        const isAmt = s.kind==='amt';
+        return {
+          label: labelOf(s.id) + (isAmt ? ' (₹)' : ' (#)'),
+          data: arr,
+          borderColor: col,
+          backgroundColor: isAmt ? col+'22' : col+'aa',
+          type: isAmt ? 'line' : 'bar',
+          yAxisID: isAmt ? 'yAmt' : 'yCnt',
+          tension: 0.3,
+          borderWidth: isAmt ? 2 : 0,
+          pointRadius: isAmt ? 2 : 0,
+          fill: false,
+        };
+      });
+      const hasAmt = sel.some(s=>s.kind==='amt');
+      const hasCnt = sel.some(s=>s.kind==='count');
+      const scales = {
+        x:{ticks:{maxRotation:0,autoSkip:true,maxTicksLimit:12,font:{size:10}}},
+      };
+      if (hasAmt) scales.yAmt = {position:'left',beginAtZero:true,ticks:{font:{size:10},callback:v=>v>=1e5?(v/1e5).toFixed(1)+'L':v>=1e3?(v/1e3).toFixed(0)+'k':v}};
+      if (hasCnt) scales.yCnt = {position:hasAmt?'right':'left',beginAtZero:true,grid:{drawOnChartArea:!hasAmt},ticks:{font:{size:10},stepSize:1,precision:0}};
+      if (chart){
+        chart.data.labels = labels;
+        chart.data.datasets = datasets;
+        chart.options.scales = scales;
+        chart.update();
+      } else {
+        chart = new Chart(chartEl, {
+          data:{labels, datasets},
+          options:Object.assign({}, baseOpts, {scales, interaction:{mode:'index',intersect:false}, plugins:{legend:{position:'bottom',labels:{font:{size:10},boxWidth:10}},tooltip:{}}})
+        });
+      }
+    }
+    function refresh(){ syncPills(); syncBoxes(); rebuild(); persist(); }
+
+    document.querySelectorAll('#anGrain .an-pill').forEach(p => p.addEventListener('click', ()=>{state.grain=p.dataset.grain; refresh();}));
+    document.querySelectorAll('#anMode .an-pill').forEach(p => p.addEventListener('click', ()=>{state.mode=p.dataset.mode; refresh();}));
+    document.querySelectorAll('[data-an-var]').forEach(cb => cb.addEventListener('change', ()=>{
+      const id=cb.dataset.anVar, kind=cb.dataset.anKind;
+      state.sel = state.sel.filter(s => !(s.id===id && s.kind===kind));
+      if (cb.checked) state.sel.push({id, kind});
+      refresh();
+    }));
+    document.querySelectorAll('.an-grp-head').forEach(h => h.addEventListener('click', ()=>h.parentElement.classList.toggle('collapsed')));
+    document.getElementById('anReset').addEventListener('click', ()=>{
+      state = {grain:'monthly', mode:'mixed', sel:(data.defaults||[]).map(id=>({id,kind:'amt'}))};
+      refresh();
+    });
+    document.getElementById('anClear').addEventListener('click', ()=>{ state.sel=[]; refresh(); });
+    refresh();
+  })();
+  
+
+  // ---- CATEGORY MIX ---------------------------------------------------------
+  
+  (function(){
+    const catMixData = {
+      l1: {"amounts": [420345.0, 44284.0, 545.0], "labels": ["Self Transfer", "Finance", "P2P"], "tail": null},
+      l2: {"amounts": [420345.0, 44284.0, 545.0], "labels": ["Self Transfer", "EMI", "P2P"], "tail": null}
+    };
+    const palette = ['#ef4444','#f59e0b','#6366f1','#10b981','#8b5cf6','#94a3b8'];
+    const ctx = document.getElementById('catMix');
+    const tailEl = document.getElementById('catMixTail');
+    const fmtINR = v => '\u20B9' + Math.round(v).toLocaleString('en-IN');
+    function renderTail(src){
+      if(!tailEl) return;
+      const t = src && src.tail;
+      if(!t){ tailEl.textContent = ''; tailEl.removeAttribute('title'); return; }
+      tailEl.textContent = '+ ' + t.count + ' more (' + fmtINR(t.total) + ')';
+      tailEl.title = t.names.join(', ');
+    }
+    const chart = new Chart(ctx,{
+      type:'doughnut',
+      data:{labels:catMixData.l1.labels,datasets:[{data:catMixData.l1.amounts,backgroundColor:palette}]},
+      options:Object.assign({}, baseOpts, {cutout:'60%'})
+    });
+    renderTail(catMixData.l1);
+    const grp = document.getElementById('catMixGrain');
+    if(grp && catMixData.l2){
+      grp.querySelectorAll('.an-pill').forEach(p => p.addEventListener('click', function(){
+        grp.querySelectorAll('.an-pill').forEach(x => x.classList.remove('active'));
+        this.classList.add('active');
+        const src = catMixData[this.dataset.grain] || catMixData.l1;
+        chart.data.labels = src.labels;
+        chart.data.datasets[0].data = src.amounts;
+        chart.update();
+        renderTail(src);
+      }));
+    }
+  })();
+  
+
+  // ---- REMITTER DOUGHNUTS ---------------------------------------------------
+  
+  new Chart(document.getElementById('remitCrChart'),{
+    type:'doughnut',
+    data:{labels:["EMI EV", "EMI VEHICLE"],datasets:[{data:[5000.0, 2500.0],backgroundColor:['#6366f1','#10b981','#f59e0b','#8b5cf6','#06b6d4']}]},
+    options:Object.assign({}, baseOpts, {cutout:'55%'})
+  });
+  
+
+  
+  new Chart(document.getElementById('remitDrChart'),{
+    type:'doughnut',
+    data:{labels:["PATELKISHANKUMA", "LM00849846", "PLA5150547202", "EMI EV", "BHOSALE RAJU TA"],datasets:[{data:[412800.0, 30160.0, 14124.0, 5000.0, 200.0],backgroundColor:['#ef4444','#f59e0b','#8b5cf6','#dc2626','#94a3b8']}]},
+    options:Object.assign({}, baseOpts, {cutout:'55%'})
+  });
+  
+
+  // ---- HEATMAP --------------------------------------------------------------
+  
+  (function(){
+    const grid = [[0, 3, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 4, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 4, 0, 0, 0, 0, 1, 2], [3, 0, 0, 0, 2, 1, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 4, 4, 0, 1, 0], [0, 2, 0, 3, 2, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 3, 0, 0, 0, 0, 4, 0, 0, 0, 0, 0, 0, 1], [2, 3, 2, 0, 2, 0, 0, 4, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3, 2, 0, 0, 0, 0, 0, 4, 0, 1, 0], [4, 3, 0, 0, 2, 3, 0, 0, 0, 1, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4, 2, 0, 0, 0]];
+    const labels = ["Sep 25", "Oct 25", "Nov 25", "Dec 25", "Jan 26", "Feb 26"];
+    const hm = document.getElementById('heatmap');
+    const axis = document.getElementById('heatmap-axis');
+    if(!hm) return;
+    grid.forEach((row, i) => {
+      const r = document.createElement('div'); r.className='heat-row';
+      const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent = labels[i] || '';
+      const cells = document.createElement('div'); cells.className='cells';
+      row.forEach(v => {
+        const d = document.createElement('div');
+        if(v) d.className = 'l' + v;
+        cells.appendChild(d);
+      });
+      r.appendChild(lbl); r.appendChild(cells); hm.appendChild(r);
+    });
+    if(axis){
+      for(let i=1;i<=31;i++){
+        const d = document.createElement('div');
+        d.textContent = (i===1||i%5===0||i===31) ? i : '';
+        axis.appendChild(d);
+      }
+    }
+  })();
+  
+
+  // ---- TX TABLE: FILTER + SORT + PAGINATION ---------------------------------
+  let activeCls = 'all';
+  let sortKey = null, sortDir = 'desc';
+  let txPage = 1;
+  const TX_PAGE_SIZE = parseInt((document.getElementById('txTable')||{}).dataset?.pageSize || '20', 10);
+
+  function togClass(el){
+    document.querySelectorAll('.tx-tools .chip').forEach(c=>c.classList.remove('on'));
+    el.classList.add('on'); activeCls = el.dataset.cls;
+    txPage = 1; applyTxView();
+  }
+  function filterTx(){ txPage = 1; applyTxView(); }
+
+  function sortTx(key){
+    if(sortKey === key){ sortDir = (sortDir === 'asc') ? 'desc' : 'asc'; }
+    else { sortKey = key; sortDir = 'desc'; }
+    const tbody = document.getElementById('txBody');
+    if(!tbody) return;
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+    const numeric = (key !== 'date');
+    rows.sort((a,b)=>{
+      const av = a.dataset[key] || '';
+      const bv = b.dataset[key] || '';
+      const cmp = numeric ? (parseFloat(av||0) - parseFloat(bv||0)) : av.localeCompare(bv);
+      return sortDir === 'asc' ? cmp : -cmp;
+    });
+    rows.forEach(r => tbody.appendChild(r));
+    document.querySelectorAll('#txTable .sort-ind').forEach(s => {
+      s.textContent = (s.dataset.key === sortKey) ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+    });
+    txPage = 1; applyTxView();
+  }
+
+  function pageTx(delta){
+    const matches = currentMatches();
+    const total = matches.length;
+    const totalPages = Math.max(1, Math.ceil(total / TX_PAGE_SIZE));
+    txPage = Math.min(totalPages, Math.max(1, txPage + delta));
+    applyTxView();
+  }
+  function gotoTxPage(p){ txPage = p; applyTxView(); }
+
+  function currentMatches(){
+    const search = document.getElementById('txSearch');
+    const q = search ? search.value.toLowerCase() : '';
+    return Array.from(document.querySelectorAll('#txBody tr')).filter(r => {
+      const matchCls = activeCls === 'all' || r.dataset.cls === activeCls;
+      const matchQ = !q || (r.dataset.text || '').includes(q);
+      return matchCls && matchQ;
+    });
+  }
+
+  function applyTxView(){
+    const all = Array.from(document.querySelectorAll('#txBody tr'));
+    const matches = currentMatches();
+    const total = matches.length;
+    const totalPages = Math.max(1, Math.ceil(total / TX_PAGE_SIZE));
+    if(txPage > totalPages) txPage = totalPages;
+    const start = (txPage - 1) * TX_PAGE_SIZE;
+    const end = start + TX_PAGE_SIZE;
+    const visible = new Set(matches.slice(start, end));
+    all.forEach(r => { r.style.display = visible.has(r) ? '' : 'none'; });
+    // Pager UI
+    const info = document.getElementById('txPagerInfo');
+    const pages = document.getElementById('txPagerPages');
+    const prev = document.getElementById('txPagerPrev');
+    const next = document.getElementById('txPagerNext');
+    if(info) info.textContent = total ? `Showing ${start+1}–${Math.min(end,total)} of ${total}` : 'No matches';
+    if(prev) prev.disabled = (txPage <= 1);
+    if(next) next.disabled = (txPage >= totalPages);
+    if(pages){
+      pages.innerHTML = '';
+      // Compact page list: 1 … (p-1) p (p+1) … N
+      const nums = new Set([1, totalPages, txPage, txPage-1, txPage+1]);
+      const sorted = [...nums].filter(n => n >= 1 && n <= totalPages).sort((a,b)=>a-b);
+      let last = 0;
+      sorted.forEach(n => {
+        if(last && n - last > 1){
+          const dots = document.createElement('span'); dots.textContent = '…'; dots.style.padding = '0 4px';
+          pages.appendChild(dots);
+        }
+        const b = document.createElement('button');
+        b.className = 'btn'; b.textContent = n;
+        b.style.cssText = 'padding:4px 8px;' + (n === txPage ? 'background:var(--accent,#6366f1);color:#fff;border-color:transparent' : '');
+        b.onclick = () => gotoTxPage(n);
+        pages.appendChild(b);
+        last = n;
+      });
+    }
+  }
+
+  // Initialize on load
+  if(document.getElementById('txBody')){ applyTxView(); }
+</script>
+
+<script>
+  /* =========================================================================
+     ADMIN EDIT MODE — inline L2 category editor for All Transactions table.
+     Gated by a hardcoded key. Edits fan out to rows with identical normalized
+     narration within this report. On save, POSTs to /save; on network failure
+     falls back to a JSON-patch download so work isn't lost.
+     ========================================================================= */
+  (function(){
+    const ADMIN_KEY = '91221';
+    const L2_OPTIONS = ["Air_Travel", "Automobile", "Bank_Fees_Charges", "Books_Stationery", "CC_bill", "Cash_Deposit", "Cash_Withdrawal", "Charity_Donations", "Cinema", "Courier_Logistics", "Digital_Betting_Gaming", "EMI", "E_Commerce", "Education", "Electricity_bill", "Electronics_Appliance", "Engineering", "Equipment_Construction", "Event", "Fashion_Beauty", "Food", "Foreign_Transaction", "Fuel", "Gas_bill", "Govt_Companies", "Govt_Tax_Challan", "Grocery", "Hospital", "Hotel", "Insurance", "Investment", "Jewelry_Premium_Gifts", "Kids_School", "Liquor_Smoke", "Loan_Disburse", "Local_Travel", "MNC_Companies", "Mobile_Bills", "OTT", "P2P", "Payment_Services", "Payroll", "Personal_Home_Services", "Pet_Care", "Pharmacy", "Real_Estate", "Recruitment", "Rent", "Salary", "Self_Transfer", "Sports_Fitness", "Subscription", "Taxi_Cab", "Wallets"];
+    const L2_TO_L1   = {"Air_Travel": "Mobility", "Automobile": "Auto_Services", "Bank_Fees_Charges": "Finance", "Books_Stationery": "Education", "CC_bill": "Credit_Card", "Cash_Deposit": "Transfer", "Cash_Withdrawal": "Transfer", "Charity_Donations": "Luxury", "Cinema": "E_Lifestyle", "Courier_Logistics": "Mobility", "Digital_Betting_Gaming": "E_Lifestyle", "EMI": "Finance", "E_Commerce": "Shopping_Lifestyle", "Education": "Education", "Electricity_bill": "Utility_Bills", "Electronics_Appliance": "Shopping_Lifestyle", "Engineering": "B2B", "Equipment_Construction": "B2B", "Event": "Shopping_Lifestyle", "Fashion_Beauty": "Shopping_Lifestyle", "Food": "Food_Restaurants", "Foreign_Transaction": "Luxury", "Fuel": "Auto_Services", "Gas_bill": "Utility_Bills", "Govt_Companies": "Govt", "Govt_Tax_Challan": "Govt", "Grocery": "Grocery", "Hospital": "Healthcare", "Hotel": "Rental_Stay", "Insurance": "Investment_Insurance", "Investment": "Investment_Insurance", "Jewelry_Premium_Gifts": "Luxury", "Kids_School": "Education", "Liquor_Smoke": "Shopping_Lifestyle", "Loan_Disburse": "Finance", "Local_Travel": "Mobility", "MNC_Companies": "B2B", "Mobile_Bills": "Utility_Bills", "OTT": "E_Lifestyle", "P2P": "P2P", "Payment_Services": "P2P", "Payroll": "Salary", "Personal_Home_Services": "Shopping_Lifestyle", "Pet_Care": "Shopping_Lifestyle", "Pharmacy": "Healthcare", "Real_Estate": "Real_Estate_Housing", "Recruitment": "Govt", "Rent": "Rental_Stay", "Salary": "Salary", "Self_Transfer": "Self_Transfer", "Sports_Fitness": "Shopping_Lifestyle", "Subscription": "E_Lifestyle", "Taxi_Cab": "Mobility", "Wallets": "P2P"};
+    const CUSTOMER_ID = 698167220;
+
+    // pendingEdits: signature -> { date, amount, narration, new_l2 }
+    // Signature is `${date}|${dr_or_cr_amount}|${narration_full}` and uniquely
+    // identifies a row that needs to be updated on the backend.
+    const pendingEdits = new Map();
+
+    function toast(msg, kind){
+      let el = document.getElementById('adminToast');
+      if(!el){
+        el = document.createElement('div');
+        el.id = 'adminToast'; el.className = 'admin-toast';
+        document.body.appendChild(el);
+      }
+      el.textContent = msg;
+      el.className = 'admin-toast show ' + (kind || '');
+      clearTimeout(el._t);
+      el._t = setTimeout(() => { el.className = 'admin-toast ' + (kind || ''); }, 2400);
+    }
+
+    function rowSignature(tr){
+      const d = tr.dataset.date || '';
+      const dr = parseFloat(tr.dataset.debit || '0');
+      const cr = parseFloat(tr.dataset.credit || '0');
+      const amt = dr || cr || 0;
+      const narr = tr.dataset.narrFull || '';
+      return d + '|' + amt + '|' + narr;
+    }
+
+    function updateEditCount(){
+      const n = pendingEdits.size;
+      const el = document.getElementById('adminEditCount');
+      if(el){ el.textContent = '(' + n + ')'; el.style.display = n ? 'inline' : 'none'; }
+    }
+
+    function applyL2ToRow(tr, newL2){
+      tr.dataset.l2 = newL2;
+      const l2cell = tr.querySelector('.cat-l2-cell');
+      const l1cell = tr.querySelector('.cat-l1-cell');
+      if(l2cell){
+        l2cell.dataset.l2 = newL2;
+        // Restore display span (drops any open <select>)
+        l2cell.innerHTML = '<span class="tag cat">' + newL2 + '</span>';
+      }
+      if(l1cell){
+        const newL1 = L2_TO_L1[newL2] || 'Transfer';
+        l1cell.innerHTML = '<span class="tag cat">' + newL1 + '</span>';
+      }
+      tr.classList.add('row-edited');
+      // Keep the data-text used by the filter input in sync so filtering still works.
+      const narr = tr.dataset.narrFull || '';
+      tr.dataset.text = (narr + ' ' + (L2_TO_L1[newL2] || '') + ' ' + newL2).toLowerCase();
+    }
+
+    function recordEdit(tr, newL2){
+      const dr = parseFloat(tr.dataset.debit || '0');
+      const cr = parseFloat(tr.dataset.credit || '0');
+      pendingEdits.set(rowSignature(tr), {
+        date: tr.dataset.date,
+        amount: dr || cr || 0,
+        dr_cr: dr ? 'D' : 'C',
+        narration: tr.dataset.narrFull || '',
+        new_l2: newL2,
+      });
+    }
+
+    function openEditor(cell){
+      if(document.body.dataset.editMode !== 'on') return;
+      if(cell.querySelector('select.l2-picker')) return; // already open
+      const tr = cell.closest('tr');
+      const current = cell.dataset.l2 || '';
+      const sel = document.createElement('select');
+      sel.className = 'l2-picker';
+      L2_OPTIONS.forEach(opt => {
+        const o = document.createElement('option');
+        o.value = opt; o.textContent = opt;
+        if(opt === current) o.selected = true;
+        sel.appendChild(o);
+      });
+      cell.innerHTML = '';
+      cell.appendChild(sel);
+      sel.focus();
+      let committed = false;
+      const onBlur = () => {
+        if(committed) return;
+        // User clicked away without picking — restore the span.
+        if(cell.contains(sel)) applyL2ToRow(tr, current);
+      };
+      const onChange = () => {
+        committed = true;
+        sel.removeEventListener('blur', onBlur);
+        const newL2 = sel.value;
+        if(newL2 === current){
+          applyL2ToRow(tr, current);
+          return;
+        }
+        const norm = tr.dataset.narrNorm || '';
+        const matched = Array.from(document.querySelectorAll('#txBody tr'))
+          .filter(r => (r.dataset.narrNorm || '') === norm);
+        matched.forEach(r => { applyL2ToRow(r, newL2); recordEdit(r, newL2); });
+        updateEditCount();
+        toast('Updated ' + matched.length + ' row' + (matched.length === 1 ? '' : 's') + ' (pending save)', 'ok');
+      };
+      sel.addEventListener('change', onChange);
+      sel.addEventListener('blur', onBlur);
+    }
+
+    // Delegate clicks on L2 cells in the transactions table.
+    document.addEventListener('click', (e) => {
+      const cell = e.target.closest('#txTable .cat-l2-cell');
+      if(cell) openEditor(cell);
+    });
+
+    window.toggleAdminMode = function(){
+      const on = document.body.dataset.editMode === 'on';
+      if(on){
+        if(pendingEdits.size > 0 && !confirm('Exit edit mode? ' + pendingEdits.size + ' unsaved edit(s) will be discarded.')) return;
+        pendingEdits.clear();
+        document.body.dataset.editMode = '';
+        document.querySelectorAll('#txBody tr.row-edited').forEach(r => r.classList.remove('row-edited'));
+        document.getElementById('adminSaveBtn').style.display = 'none';
+        updateEditCount();
+        return;
+      }
+      const key = prompt('Enter admin key to enable edit mode:');
+      if(key === null) return;
+      if(key !== ADMIN_KEY){ toast('Invalid admin key', 'err'); return; }
+      document.body.dataset.editMode = 'on';
+      document.getElementById('adminSaveBtn').style.display = '';
+      toast('Edit mode ON — click any sub-category cell to edit', 'ok');
+    };
+
+    function downloadPatch(payload){
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'category_edits_' + (payload.customer_id || 'customer') + '_' + Date.now() + '.json';
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    window.saveAdminEdits = async function(){
+      if(pendingEdits.size === 0){ toast('No edits to save', 'err'); return; }
+      const payload = {
+        customer_id: CUSTOMER_ID,
+        edits: Array.from(pendingEdits.values()),
+      };
+      try {
+        const res = await fetch('save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        toast('Saved · updated ' + (data.updated ?? '?') + ' row(s) in rgs.csv', 'ok');
+        pendingEdits.clear();
+        updateEditCount();
+        setTimeout(() => location.reload(), 900);
+      } catch(err){
+        toast('No save endpoint — downloading patch JSON instead', 'err');
+        downloadPatch(payload);
+      }
+    };
+  })();
+</script>
+</body>
+</html>

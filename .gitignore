@@ -13,9 +13,6 @@ __pycache__
 docs/
 *.md
 
-# Generated HTML reports
-*.html
-
 # PowerPoint files
 *.ppt
 *.pptx

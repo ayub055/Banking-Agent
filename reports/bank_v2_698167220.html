@@ -1,0 +1,857 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Banking Risk Report — ###7220</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f6f7fb; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --indigo:#6366f1; --indigo-deep:#4338ca; --indigo-ink:#1e1b4b;
+    --green:#10b981; --amber:#f59e0b; --red:#ef4444; --grey:#cbd5e1;
+    --border:#e2e8f0; --chip:#eef2ff;
+    --shadow:0 1px 2px rgba(15,23,42,.04), 0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'Inter','Segoe UI',system-ui,sans-serif;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.5}
+  .shell{max-width:1200px;margin:0 auto;padding:16px 20px 80px}
+
+  /* HEADER */
+  .topbar{
+    position:sticky;top:0;z-index:40;background:rgba(255,255,255,.92);backdrop-filter:blur(8px);
+    border:1px solid var(--border);border-radius:14px;padding:12px 16px;margin-bottom:16px;
+    display:flex;align-items:center;gap:14px;box-shadow:var(--shadow);
+  }
+  .topbar .brand{display:flex;align-items:center;gap:10px;font-weight:700;color:var(--indigo-ink)}
+  .topbar .brand .logo{width:28px;height:28px;border-radius:8px;background:linear-gradient(135deg,var(--indigo),var(--indigo-deep));display:grid;place-items:center;color:#fff;font-weight:900;font-size:12px}
+  .topbar .cust{display:flex;gap:18px;margin-left:8px;font-size:13px;color:var(--muted)}
+  .topbar .cust b{color:var(--ink)}
+  .topbar .spacer{flex:1}
+  .verdict-pill{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;font-weight:700;font-size:13px}
+  .verdict-pill.amber{background:#fef3c7;color:#92400e;border:1px solid #fcd34d}
+  .verdict-pill.red{background:#fee2e2;color:#991b1b;border:1px solid #fca5a5}
+  .verdict-pill.green{background:#d1fae5;color:#065f46;border:1px solid #6ee7b7}
+  .verdict-pill::before{content:"●"}
+  .btn{padding:8px 12px;border-radius:10px;border:1px solid var(--border);background:#fff;cursor:pointer;font-weight:600;font-size:12px;color:var(--ink)}
+  .btn:hover{border-color:var(--indigo);color:var(--indigo)}
+
+  /* SECTION NAV CHIPS */
+  .navchips{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:18px}
+  .navchips a{
+    padding:6px 12px;border-radius:999px;background:var(--chip);color:var(--indigo-deep);
+    font-size:12px;font-weight:600;text-decoration:none;border:1px solid transparent
+  }
+  .navchips a:hover{border-color:var(--indigo)}
+  .navchips a .badge{display:inline-block;background:var(--red);color:#fff;font-size:10px;padding:1px 6px;border-radius:999px;margin-left:4px}
+
+  /* KPI STRIP */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:12px;margin-bottom:18px}
+  .kpi{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);position:relative;overflow:hidden}
+  .kpi::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--indigo)}
+  .kpi.green::before{background:var(--green)}
+  .kpi.amber::before{background:var(--amber)}
+  .kpi.red::before{background:var(--red)}
+  .kpi .label{font-size:11px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);font-weight:600}
+  .kpi .value{font-size:20px;font-weight:800;color:var(--indigo-ink);margin-top:4px;line-height:1.15}
+  .kpi .sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .kpi .spark{height:28px;margin-top:6px}
+  .stress-gauge{display:flex;align-items:center;gap:10px;margin-top:4px}
+  .stress-gauge .bar{flex:1;height:8px;background:#e2e8f0;border-radius:999px;overflow:hidden}
+  .stress-gauge .fill{height:100%;background:linear-gradient(90deg,var(--green),var(--amber),var(--red))}
+
+  /* PANEL BASE */
+  .panel{background:var(--panel);border:1px solid var(--border);border-radius:14px;padding:18px 20px;margin-bottom:16px;box-shadow:var(--shadow)}
+  .panel h2{font-size:14px;text-transform:uppercase;letter-spacing:.6px;color:var(--indigo-deep);margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .panel h2::before{content:"";width:4px;height:16px;background:var(--indigo);border-radius:2px}
+  .panel h2 .count{margin-left:auto;font-size:11px;color:var(--muted);font-weight:500;letter-spacing:0;text-transform:none}
+  .muted{color:var(--muted);font-size:12.5px;font-style:italic}
+
+  /* CHECKLIST */
+  .checks{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+  .check-col h3{font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:8px;letter-spacing:.4px}
+  .check{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;background:#f8fafc;border:1px solid var(--border);margin-bottom:6px;font-size:13px}
+  .check .ico{width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .check .lbl{flex:1;font-weight:500}
+  .check .det{font-size:11px;color:var(--muted)}
+  .check.red{background:#fef2f2;border-color:#fecaca}
+  .check.red .ico{background:var(--red);color:#fff}
+  .check.amber{background:#fffbeb;border-color:#fde68a}
+  .check.amber .ico{background:var(--amber);color:#fff}
+  .check.green{background:#f0fdf4;border-color:#bbf7d0}
+  .check.green .ico{background:var(--green);color:#fff}
+  .check.neutral .ico{background:#94a3b8;color:#fff}
+  .check .det{display:block;font-size:11px;color:var(--muted);margin-top:2px}
+
+  /* SUMMARY */
+  .summary{background:linear-gradient(135deg,#eef2ff 0%,#fdf4ff 100%);border-radius:12px;padding:14px 16px;font-size:13.5px;line-height:1.65;border:1px solid #e0e7ff}
+  .summary .more-toggle{color:var(--indigo);cursor:pointer;font-weight:600;font-size:12px}
+  .summary.clamped .more{display:none}
+  .summary:not(.clamped) .teaser-dots{display:none}
+
+  /* TABS */
+  .tabs{display:inline-flex;gap:0;background:#f1f5f9;padding:3px;border-radius:10px;margin-bottom:14px}
+  .tabs button{padding:6px 14px;border:none;background:transparent;font-weight:600;font-size:12.5px;color:var(--muted);border-radius:8px;cursor:pointer}
+  .tabs button.active{background:#fff;color:var(--indigo-deep);box-shadow:0 1px 3px rgba(0,0,0,.08)}
+  .tab-body{display:none}
+  .tab-body.active{display:block}
+
+  /* TABLE */
+  table.data{width:100%;border-collapse:collapse;font-size:12.5px}
+  table.data th{text-align:left;padding:10px 12px;background:#f8fafc;color:var(--muted);font-weight:600;text-transform:uppercase;font-size:10.5px;letter-spacing:.5px;border-bottom:1px solid var(--border)}
+  table.data td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+  table.data tr:hover td{background:#fafbff}
+  table.data td.num{text-align:right;font-variant-numeric:tabular-nums;font-weight:600}
+  table.data td.dr{color:var(--red)}
+  table.data td.cr{color:var(--green)}
+  .tag{display:inline-block;padding:2px 8px;border-radius:999px;font-size:10.5px;font-weight:600;letter-spacing:.2px}
+  .tag.cat{background:var(--chip);color:var(--indigo-deep)}
+  .tag.emi{background:#fef3c7;color:#92400e}
+  .tag.salary{background:#d1fae5;color:#065f46}
+  .tag.upi{background:#e0e7ff;color:#3730a3}
+  .tag.fraud{background:#fee2e2;color:#991b1b}
+  .tag.inv{background:#cffafe;color:#155e75}
+  .tag.other{background:#f1f5f9;color:#475569}
+  .freq{font-size:11px;color:var(--muted)}
+
+  /* SALARY DOTS */
+  .sal-strip{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin-top:4px}
+  .sal-dot{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:10px;color:#fff;font-weight:700}
+  .sal-dot.ok{background:var(--green)}
+  .sal-dot.late{background:var(--amber)}
+  .sal-dot.miss{background:var(--red)}
+
+  /* LOAN CARDS */
+  .loan-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
+  .loan-card{border:1px solid var(--border);border-radius:12px;padding:14px;background:#fafbff;position:relative}
+  .loan-card .head{display:flex;justify-content:space-between;margin-bottom:10px}
+  .loan-card .head b{font-size:13.5px;color:var(--indigo-ink)}
+  .loan-card .amt{font-size:18px;font-weight:800;color:var(--red)}
+  .loan-card.cr .amt{color:var(--green)}
+  .loan-card .row{display:flex;justify-content:space-between;font-size:12px;padding:4px 0;color:var(--muted)}
+  .loan-card .row b{color:var(--ink);font-weight:600}
+
+  /* REMITTERS */
+  .remit-grid{display:grid;grid-template-columns:2fr 3fr;gap:18px;align-items:start}
+  .remit-list{list-style:none}
+  .remit-list li{display:grid;grid-template-columns:30px 1fr auto;gap:12px;align-items:center;padding:10px 0;border-bottom:1px dashed var(--border)}
+  .rank{width:24px;height:24px;border-radius:6px;background:var(--chip);color:var(--indigo-deep);display:grid;place-items:center;font-weight:700;font-size:11px}
+  .remit-list .name{font-weight:600}
+  .remit-list .meta{font-size:11px;color:var(--muted)}
+  .remit-list .amt{font-weight:700;font-variant-numeric:tabular-nums}
+
+  /* TX TABLE TOOLS */
+  .tx-tools{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+  .tx-tools input{padding:7px 12px;border:1px solid var(--border);border-radius:10px;font-size:12.5px;min-width:220px}
+  .tx-tools .chip{padding:5px 10px;border-radius:999px;background:#f1f5f9;color:var(--muted);font-size:11.5px;font-weight:600;cursor:pointer;border:1px solid transparent}
+  .tx-tools .chip.on{background:var(--indigo);color:#fff;border-color:var(--indigo)}
+
+  /* CHARTS */
+  .chart-wrap{position:relative;height:280px}
+  .chart-wrap.sm{height:220px}
+
+  /* STRESS SPIKES */
+  .spike-note{font-size:11px;color:var(--red);margin-top:6px;display:flex;align-items:center;gap:6px}
+  .spike-note::before{content:"⚠"}
+
+  /* HEATMAP */
+  .heat-wrap{display:flex;flex-direction:column;gap:8px}
+  .heat-row{display:flex;align-items:center;gap:8px}
+  .heat-row .lbl{font-size:10px;color:var(--muted);width:44px;flex-shrink:0;text-align:right}
+  .heat-row .cells{display:grid;grid-template-columns:repeat(31,10px);gap:2px}
+  .heat-row .cells div{background:#e2e8f0;border-radius:2px;height:10px}
+  .heat-row .cells .l1{background:#c7d2fe}.heat-row .cells .l2{background:#818cf8}.heat-row .cells .l3{background:#6366f1}.heat-row .cells .l4{background:#4338ca}
+  .heat-axis{display:grid;grid-template-columns:repeat(31,10px);gap:2px;margin-left:52px;font-size:9px;color:var(--muted)}
+  .heat-axis div{text-align:center}
+  .heat-legend{font-size:11px;color:var(--muted)}
+
+  /* FOOTER */
+  .foot{text-align:center;color:var(--muted);font-size:11px;margin-top:20px}
+</style>
+</head>
+<body>
+<div class="shell">
+
+  
+  
+  
+  <div class="topbar">
+    <div class="brand"><div class="logo">K</div>Banking Risk Report</div>
+    
+    <div class="cust">
+      <div><b>Customer:</b> ###7220 · ASHISH JANKIRAM PATIL</div>
+      <div><b>Period:</b> Last 6 months</div>
+      <div><b>Txns:</b> 21</div>
+    </div>
+    
+    <div class="spacer"></div>
+    
+    <span class="verdict-pill green">LOW RISK</span>
+    
+  </div>
+
+  
+  
+  
+  <div class="navchips">
+    <a href="#kpis">Overview</a>
+    <a href="#checks">Risk Checks</a>
+    <a href="#summary">Summary</a>
+    <a href="#cashflow">Cashflow</a>
+    <a href="#recurring">Recurring</a>
+    <a href="#loans">Loan Activity</a>
+    <a href="#remitters">Top Remitters</a>
+    <a href="#txns">Transactions</a>
+  </div>
+
+  
+  
+  
+  
+  
+  <div class="kpis" id="kpis">
+    
+    <div class="kpi green">
+      <div class="label">Avg Salary</div>
+      <div class="value">₹ 51,020</div>
+      <div class="sub">6 of 6 months credited</div>
+      <div class="sal-strip">
+        
+        <div class="sal-dot ok" title="2025-09">2</div>
+        
+        <div class="sal-dot ok" title="2025-10">2</div>
+        
+        <div class="sal-dot ok" title="2025-11">2</div>
+        
+        <div class="sal-dot ok" title="2025-12">2</div>
+        
+        <div class="sal-dot ok" title="2026-01">2</div>
+        
+        <div class="sal-dot ok" title="2026-02">2</div>
+        
+      </div>
+    </div>
+    
+
+    
+    <div class="kpi">
+      <div class="label">Avg Closing Balance</div>
+      <div class="value">₹ 1,77,286</div>
+      <div class="sub">Min ₹ -75 · Max ₹ 3,05,532</div>
+      <div class="spark"><canvas id="sparkBal"></canvas></div>
+    </div>
+    
+
+    
+    <div class="kpi green">
+      <div class="label">Net Cashflow (6M)</div>
+      <div class="value">₹ 3,05,532</div>
+      <div class="sub">Net positive</div>
+      <div class="spark"><canvas id="sparkNet"></canvas></div>
+    </div>
+    
+
+    
+    <div class="kpi green">
+      <div class="label">Total EMI / mo</div>
+      <div class="value">₹ 7,500</div>
+      <div class="sub">14.7% of salary · 2 active loans</div>
+    </div>
+    
+
+    
+    <div class="kpi green">
+      <div class="label">Stress Score</div>
+      <div class="value">95 <span style="font-size:12px;color:var(--green);font-weight:600">LOW</span></div>
+      <div class="stress-gauge"><div class="bar"><div class="fill" style="width:95%"></div></div></div>
+      <div class="sub">Confirm income source from employer or IT returns</div>
+    </div>
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="checks">
+    <h2>Risk · FCU · Fraud Indicators <span class="count">15 checks · 0 red · 3 amber</span></h2>
+    <div class="checks">
+      <div class="check-col">
+        <h3>Risk</h3>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">ECS / NACH bounces</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Loan disbursement detected</div></div>
+        
+        <div class="check green"><div class="ico">✓</div><div class="lbl">Salary detected in banking<div class="det">₹51,020 avg (6 transactions)</div></div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">EMI obligations present<div class="det">₹7,500 total across 2 lender(s)</div></div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">NACH mandate EMI detected</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Rent payments present</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Credit card bill payments</div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">Emerging merchants detected<div class="det">6 new: EMI VEHICLE, REKHA KANSAL, SALIM AMIN ATTA</div></div></div>
+        
+      </div>
+      <div class="check-col">
+        <h3>FCU</h3>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Post-disbursement fund diversion</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Post-salary self-transfer</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Land purchase payments</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Automated (NACH/mandate) transactions</div></div>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">Payment mode distribution shift</div></div>
+        
+      </div>
+      <div class="check-col">
+        <h3>Fraud</h3>
+        
+        <div class="check neutral"><div class="ico">✓</div><div class="lbl">ATM withdrawals elevated</div></div>
+        
+        <div class="check amber"><div class="ico">!</div><div class="lbl">Transactions above 95th percentile<div class="det">Salary Feb 2026: ₹52,161 (credit); EMI EV: ₹5,000 (debit)</div></div></div>
+        
+      </div>
+    </div>
+  </div>
+  
+
+  
+  
+  
+  <div class="panel" id="summary">
+    <h2>Banking Summary <span class="count">LLM-generated narrative</span></h2>
+    <div class="summary clamped" id="sum">
+      The customer maintains a stable banking profile with steady salary credits and modest EMI obligations. Average monthly inflow is well above outflow indicating disciplined spending behaviour.
+      
+      <span class="teaser-dots">… <span class="more-toggle" onclick="toggleSummary()">read more</span></span>
+      <div class="more">
+        EMI commitments are within affordable limits at 15 percent of salary. Top merchant interactions are consistent across months suggesting predictable payment patterns. No fraud or FCU-level concerns detected.
+        <span class="more-toggle" onclick="toggleSummary()"> show less</span>
+      </div>
+      
+    </div>
+  </div>
+
+  
+  
+  
+  
+  <div class="panel" id="cashflow">
+    <h2>Monthly Cashflow &amp; Running Balance</h2>
+    <div class="chart-wrap"><canvas id="cashChart"></canvas></div>
+    
+    <div class="spike-note">Outflow spikes (&gt;1.5× median) in 2025-10, 2025-12, 2026-02</div>
+    
+
+    <div style="margin-top:18px;display:grid;grid-template-columns:minmax(0,1.6fr) minmax(0,1fr);gap:24px;align-items:start">
+      
+      <div style="overflow-x:auto;min-width:0">
+        <h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:4px">Debit Velocity Heatmap <span class="freq">(Sep 2025 – Feb 2026 · day-of-month)</span></h3>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:10px">13 debits across 6 months</div>
+        <div class="heat-wrap" id="heatmap"></div>
+        <div class="heat-axis" id="heatmap-axis"></div>
+        <div class="heat-legend" style="margin-top:8px">
+          Low <span style="display:inline-block;width:12px;height:12px;background:#e2e8f0;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#c7d2fe;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#818cf8;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#6366f1;margin:0 2px;border-radius:2px"></span>
+          <span style="display:inline-block;width:12px;height:12px;background:#4338ca;margin:0 2px;border-radius:2px"></span>
+          High
+        </div>
+      </div>
+      
+      
+      <div style="min-width:0">
+        <h3 style="font-size:12px;text-transform:uppercase;color:var(--muted);margin-bottom:8px">Category Spend Mix</h3>
+        <div class="chart-wrap sm"><canvas id="catMix"></canvas></div>
+      </div>
+      
+    </div>
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="recurring">
+    <h2>Recurring Transactions</h2>
+    <div class="tabs">
+      <button class="active" onclick="tab(event,'rec-dr')">Debits (2)</button>
+      <button  onclick="tab(event,'rec-cr')">Credits (1)</button>
+    </div>
+    
+    <div class="tab-body active" id="rec-dr">
+      <table class="data">
+        <thead><tr><th>Merchant / Party</th><th>Category</th><th>Frequency</th><th>Last Seen</th><th>Next Expected</th><th class="num">Avg Amount</th></tr></thead>
+        <tbody>
+          
+          <tr>
+            <td>EMI EV</td>
+            <td><span class="tag emi">EMI</span></td>
+            <td>Ad-hoc</td>
+            <td>31-Oct</td>
+            <td>30-Nov</td>
+            <td class="num dr">5,000</td>
+          </tr>
+          
+          <tr>
+            <td>EMI VEHICLE</td>
+            <td><span class="tag emi">EMI</span></td>
+            <td>Ad-hoc</td>
+            <td>01-Feb</td>
+            <td>03-Mar</td>
+            <td class="num dr">2,500</td>
+          </tr>
+          
+        </tbody>
+      </table>
+    </div>
+    
+    
+    <div class="tab-body " id="rec-cr">
+      <table class="data">
+        <thead><tr><th>Source</th><th>Category</th><th>Frequency</th><th>Last Seen</th><th>Next Expected</th><th class="num">Avg Amount</th></tr></thead>
+        <tbody>
+          
+          <tr>
+            <td>Salary Oct 2025</td>
+            <td><span class="tag salary">Salary</span></td>
+            <td>Monthly</td>
+            <td>27-Feb</td>
+            <td>29-Mar</td>
+            <td class="num cr">51,020</td>
+          </tr>
+          
+        </tbody>
+      </table>
+    </div>
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="loans">
+    <h2>Loan Activity <span class="count">Inferred from transactions</span></h2>
+    <div class="tabs">
+      <button class="active" onclick="tab(event,'ln-dr')">Loan EMIs (2)</button>
+      
+    </div>
+    
+    <div class="tab-body active" id="ln-dr">
+      <div class="loan-grid">
+        
+        <div class="loan-card">
+          <div class="head"><b>EMI EV</b><div class="amt">₹ 5,000</div></div>
+          <div class="row"><span>EMI Day</span><b>31st</b></div>
+          <div class="row"><span>Months paid</span><b>1 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+        <div class="loan-card">
+          <div class="head"><b>EMI VEHICLE</b><div class="amt">₹ 2,500</div></div>
+          <div class="row"><span>EMI Day</span><b>1st</b></div>
+          <div class="row"><span>Months paid</span><b>1 / 6</b></div>
+          <div class="row"><span>Bounces</span><b style="color:var(--green)">0</b></div>
+        </div>
+        
+      </div>
+    </div>
+    
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="remitters">
+    <h2>Top Remitters</h2>
+    <div class="tabs">
+      <button class="active" onclick="tab(event,'rem-cr')">Credit Sources (2)</button>
+      <button  onclick="tab(event,'rem-dr')">Debit Beneficiaries (5)</button>
+    </div>
+    
+    <div class="tab-body active" id="rem-cr">
+      <div class="remit-grid">
+        <div class="chart-wrap sm"><canvas id="remitCrChart"></canvas></div>
+        <ul class="remit-list">
+          
+          <li><div class="rank">1</div><div><div class="name">EMI EV</div><div class="meta">1 txn</div></div><div class="amt">₹ 5,000</div></li>
+          
+          <li><div class="rank">2</div><div><div class="name">EMI VEHICLE</div><div class="meta">1 txn</div></div><div class="amt">₹ 2,500</div></li>
+          
+        </ul>
+      </div>
+    </div>
+    
+    
+    <div class="tab-body " id="rem-dr">
+      <div class="remit-grid">
+        <div class="chart-wrap sm"><canvas id="remitDrChart"></canvas></div>
+        <ul class="remit-list">
+          
+          <li><div class="rank">1</div><div><div class="name">EMI EV</div><div class="meta">1 txn</div></div><div class="amt">₹ 5,000</div></li>
+          
+          <li><div class="rank">2</div><div><div class="name">EMI VEHICLE</div><div class="meta">1 txn</div></div><div class="amt">₹ 2,500</div></li>
+          
+          <li><div class="rank">3</div><div><div class="name">BHOSALE RAJU TA</div><div class="meta">4 txn</div></div><div class="amt">₹ 200</div></li>
+          
+          <li><div class="rank">4</div><div><div class="name">REKHA KANSAL</div><div class="meta">1 txn</div></div><div class="amt">₹ 150</div></li>
+          
+          <li><div class="rank">5</div><div><div class="name">SALIM AMIN ATTA</div><div class="meta">2 txn</div></div><div class="amt">₹ 100</div></li>
+          
+        </ul>
+      </div>
+    </div>
+    
+  </div>
+  
+
+  
+  
+  
+  
+  <div class="panel" id="txns">
+    <h2>All Transactions <span class="count">21 total · showing 21</span></h2>
+    <div class="tx-tools">
+      <input type="text" id="txSearch" placeholder="Search merchant, narration, amount…" oninput="filterTx()" />
+      <span class="chip on" data-cls="all" onclick="togClass(this)">All</span>
+      <span class="chip" data-cls="salary" onclick="togClass(this)">Salary</span>
+      <span class="chip" data-cls="emi" onclick="togClass(this)">EMI</span>
+      <span class="chip" data-cls="upi" onclick="togClass(this)">UPI</span>
+      <span class="chip" data-cls="fraud" onclick="togClass(this)">Gaming/Fraud</span>
+      <span class="chip" data-cls="inv" onclick="togClass(this)">Investment</span>
+      <span class="chip" data-cls="other" onclick="togClass(this)">Other</span>
+    </div>
+    <table class="data" id="txTable">
+      <thead><tr><th>Date</th><th>Narration</th><th>Class</th><th>Category</th><th class="num">Debit</th><th class="num">Credit</th></tr></thead>
+      <tbody id="txBody">
+        
+        <tr data-cls="salary" data-text="salary feb 2026 salary">
+          <td>27-Feb</td>
+          <td>Salary Feb 2026</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">52,161</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/salim amin atta/299881789978/sent using payt other">
+          <td>10-Feb</td>
+          <td>UPI/SALIM AMIN ATTA/299881789978/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/salim amin atta/603659202832/sent using payt other">
+          <td>05-Feb</td>
+          <td>UPI/SALIM AMIN ATTA/603659202832/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:received money from own 2411690870/emi vehicle other">
+          <td>01-Feb</td>
+          <td>MB:RECEIVED MONEY FROM OWN 2411690870/EMI VEHICLE</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">2,500</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:sent money to own 2411726562/emi vehicle other">
+          <td>01-Feb</td>
+          <td>MB:SENT MONEY TO OWN 2411726562/EMI VEHICLE</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">2,500</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary jan 2026 salary">
+          <td>30-Jan</td>
+          <td>Salary Jan 2026</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">51,111</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/sohail salim sa/603081882987/sent using payt mobility">
+          <td>30-Jan</td>
+          <td>UPI/SOHAIL SALIM SA/603081882987/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">Mobility</span></td>
+          <td class="num dr">45</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary dec 2025 salary">
+          <td>31-Dec</td>
+          <td>Salary Dec 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">51,111</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/rekha kansal/536591190390/sent using payt other">
+          <td>31-Dec</td>
+          <td>UPI/REKHA KANSAL/536591190390/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">150</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/535117442379/sent using payt other">
+          <td>17-Dec</td>
+          <td>UPI/BHOSALE RAJU TA/535117442379/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/riyaz salim pat/695747907995/sent using payt other">
+          <td>17-Dec</td>
+          <td>UPI/RIYAZ SALIM PAT/695747907995/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">25</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/arti dipak salu/393701035102/sent using payt other">
+          <td>12-Dec</td>
+          <td>UPI/Arti Dipak Salu/393701035102/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">45</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary nov 2025 salary">
+          <td>28-Nov</td>
+          <td>Salary Nov 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">51,111</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/531032301026/sent using payt other">
+          <td>06-Nov</td>
+          <td>UPI/BHOSALE RAJU TA/531032301026/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary oct 2025 salary">
+          <td>31-Oct</td>
+          <td>Salary Oct 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">50,314</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:received money from own 2411690870/emi ev other">
+          <td>31-Oct</td>
+          <td>MB:RECEIVED MONEY FROM OWN 2411690870/EMI EV</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">5,000</td>
+        </tr>
+        
+        <tr data-cls="emi" data-text="mb:sent money to own 2411726562/emi ev other">
+          <td>31-Oct</td>
+          <td>MB:SENT MONEY TO OWN 2411726562/EMI EV</td>
+          <td><span class="tag emi">EMI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">5,000</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/529061057068/sent using payt other">
+          <td>17-Oct</td>
+          <td>UPI/BHOSALE RAJU TA/529061057068/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="salary" data-text="salary sep 2025 salary">
+          <td>30-Sep</td>
+          <td>Salary Sep 2025</td>
+          <td><span class="tag salary">SALARY</span></td>
+          <td><span class="tag cat">Salary</span></td>
+          <td class="num dr"></td>
+          <td class="num cr">50,314</td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/bhosale raju ta/389987579150/sent using payt other">
+          <td>28-Sep</td>
+          <td>UPI/BHOSALE RAJU TA/389987579150/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">50</td>
+          <td class="num cr"></td>
+        </tr>
+        
+        <tr data-cls="upi" data-text="upi/anil baban salu/690031421677/sent using payt other">
+          <td>02-Sep</td>
+          <td>UPI/ANIL BABAN SALU/690031421677/Sent using Payt</td>
+          <td><span class="tag upi">UPI</span></td>
+          <td><span class="tag cat">other</span></td>
+          <td class="num dr">25</td>
+          <td class="num cr"></td>
+        </tr>
+        
+      </tbody>
+    </table>
+  </div>
+  
+
+  <div class="foot">Generated Last 6 months · BANK_ANALYSER v2</div>
+</div>
+
+<script>
+  // ---- TABS / SUMMARY TOGGLE ------------------------------------------------
+  function tab(e, id){
+    const wrap = e.target.closest('.panel');
+    wrap.querySelectorAll('.tabs button').forEach(b=>b.classList.remove('active'));
+    e.target.classList.add('active');
+    wrap.querySelectorAll('.tab-body').forEach(b=>b.classList.remove('active'));
+    const target = wrap.querySelector('#'+id);
+    if(target) target.classList.add('active');
+  }
+  function toggleSummary(){ const s=document.getElementById('sum'); if(s) s.classList.toggle('clamped'); }
+
+  const baseOpts = {responsive:true,maintainAspectRatio:false,plugins:{legend:{display:true,position:'bottom',labels:{boxWidth:10,font:{size:11}}}}};
+
+  // ---- KPI SPARKLINES -------------------------------------------------------
+  
+  new Chart(document.getElementById('sparkBal'),{
+    type:'line',
+    data:{labels:["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"],datasets:[{data:[50239.0, 100503.0, 151564.0, 202405.0, 253471.0, 305532.0],borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.12)',fill:true,tension:.35,pointRadius:0,borderWidth:2}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+  
+
+  
+  new Chart(document.getElementById('sparkNet'),{
+    type:'bar',
+    data:{labels:["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"],datasets:[{data:[50239.0, 50264.0, 51061.0, 50841.0, 51066.0, 52061.0],backgroundColor:(c)=>c.raw<0?'#ef4444':'#10b981'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{display:false},y:{display:false}}}
+  });
+  
+
+  // ---- CASHFLOW MAIN CHART --------------------------------------------------
+  
+  new Chart(document.getElementById('cashChart'),{
+    data:{labels:["2025-09", "2025-10", "2025-11", "2025-12", "2026-01", "2026-02"],datasets:[
+      {type:'bar',label:'Credits',data:[50314.0, 55314.0, 51111.0, 51111.0, 51111.0, 54661.0],backgroundColor:'#10b981',stack:'a'},
+      {type:'bar',label:'Debits',data:[-75.0, -5050.0, -50.0, -270.0, -45.0, -2600.0],backgroundColor:'#ef4444',stack:'a'}
+      
+      ,{type:'line',label:'Closing Balance',data:[50239.0, 100503.0, 151564.0, 202405.0, 253471.0, 305532.0],borderColor:'#6366f1',backgroundColor:'rgba(99,102,241,.15)',fill:false,tension:.35,yAxisID:'y1',borderWidth:3,pointRadius:4,spanGaps:true}
+      
+    ]},
+    options:Object.assign({}, baseOpts, {scales:{y:{stacked:true,title:{display:true,text:'Flow (₹)'}},y1:{position:'right',grid:{display:false},title:{display:true,text:'Balance (₹)'}}}})
+  });
+  
+
+  // ---- CATEGORY MIX ---------------------------------------------------------
+  
+  new Chart(document.getElementById('catMix'),{
+    type:'doughnut',
+    data:{labels:["other", "Mobility"],datasets:[{data:[8045.0, 45.0],backgroundColor:['#ef4444','#f59e0b','#6366f1','#10b981','#8b5cf6','#94a3b8']}]},
+    options:Object.assign({}, baseOpts, {cutout:'60%'})
+  });
+  
+
+  // ---- REMITTER DOUGHNUTS ---------------------------------------------------
+  
+  new Chart(document.getElementById('remitCrChart'),{
+    type:'doughnut',
+    data:{labels:["EMI EV", "EMI VEHICLE"],datasets:[{data:[5000.0, 2500.0],backgroundColor:['#6366f1','#10b981','#f59e0b','#8b5cf6','#06b6d4']}]},
+    options:Object.assign({}, baseOpts, {cutout:'55%'})
+  });
+  
+
+  
+  new Chart(document.getElementById('remitDrChart'),{
+    type:'doughnut',
+    data:{labels:["EMI EV", "EMI VEHICLE", "BHOSALE RAJU TA", "REKHA KANSAL", "SALIM AMIN ATTA"],datasets:[{data:[5000.0, 2500.0, 200.0, 150.0, 100.0],backgroundColor:['#ef4444','#f59e0b','#8b5cf6','#dc2626','#94a3b8']}]},
+    options:Object.assign({}, baseOpts, {cutout:'55%'})
+  });
+  
+
+  // ---- HEATMAP --------------------------------------------------------------
+  
+  (function(){
+    const grid = [[0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 4], [0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 3], [0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0], [4, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]];
+    const labels = ["Sep 25", "Oct 25", "Nov 25", "Dec 25", "Jan 26", "Feb 26"];
+    const hm = document.getElementById('heatmap');
+    const axis = document.getElementById('heatmap-axis');
+    if(!hm) return;
+    grid.forEach((row, i) => {
+      const r = document.createElement('div'); r.className='heat-row';
+      const lbl = document.createElement('div'); lbl.className='lbl'; lbl.textContent = labels[i] || '';
+      const cells = document.createElement('div'); cells.className='cells';
+      row.forEach(v => {
+        const d = document.createElement('div');
+        if(v) d.className = 'l' + v;
+        cells.appendChild(d);
+      });
+      r.appendChild(lbl); r.appendChild(cells); hm.appendChild(r);
+    });
+    if(axis){
+      for(let i=1;i<=31;i++){
+        const d = document.createElement('div');
+        d.textContent = (i===1||i%5===0||i===31) ? i : '';
+        axis.appendChild(d);
+      }
+    }
+  })();
+  
+
+  // ---- TX TABLE FILTER ------------------------------------------------------
+  let activeCls='all';
+  function togClass(el){
+    document.querySelectorAll('.tx-tools .chip').forEach(c=>c.classList.remove('on'));
+    el.classList.add('on'); activeCls=el.dataset.cls; filterTx();
+  }
+  function filterTx(){
+    const search=document.getElementById('txSearch');
+    const q=search ? search.value.toLowerCase() : '';
+    document.querySelectorAll('#txBody tr').forEach(r=>{
+      const matchCls = activeCls==='all' || r.dataset.cls===activeCls;
+      const matchQ = !q || (r.dataset.text||'').includes(q);
+      r.style.display = (matchCls && matchQ)?'':'none';
+    });
+  }
+</script>
+</body>
+</html>

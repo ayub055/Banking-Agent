@@ -23,7 +23,7 @@ from script import KotakOAuth2Handler, KotakAIWrapper
 from config.settings import (
     LLM_PROVIDER, LLM_TEMPERATURE, LLM_SEED,
     KOTAK_TOKEN_URL, KOTAK_API_URL, KOTAK_CLIENT_ID, KOTAK_CLIENT_SECRET,
-    KOTAK_CA_BUNDLE, KOTAK_MODEL, KOTAK_MAX_TOKENS,
+    KOTAK_SCOPE, KOTAK_CA_BUNDLE, KOTAK_VERIFY_SSL, KOTAK_MODEL, KOTAK_MAX_TOKENS,
 )
 
 
@@ -39,34 +39,38 @@ def _get_wrapper() -> KotakAIWrapper:
         client_id=KOTAK_CLIENT_ID,
         client_secret=KOTAK_CLIENT_SECRET,
         ca_bundle=KOTAK_CA_BUNDLE or None,
+        scope=KOTAK_SCOPE,
+        verify_ssl=KOTAK_VERIFY_SSL,
     )
     return KotakAIWrapper(
         api_url=KOTAK_API_URL,
         oauth2_handler=oauth,
         ca_bundle=KOTAK_CA_BUNDLE or None,
+        verify_ssl=KOTAK_VERIFY_SSL,
     )
+
+
+def _content_to_text(content) -> str:
+    """Flatten a ``content`` field that may be a string or a list of text blocks."""
+    if isinstance(content, list):
+        return "".join(b.get("text", "") for b in content if isinstance(b, dict))
+    return content if isinstance(content, str) else ""
 
 
 def _parse_response(resp: dict) -> tuple[str, dict]:
     """Extract text + token usage from the gateway response.
 
     Handles both OpenAI-style (``choices[0].message.content``) and
-    Anthropic-style (``content`` as a list of text blocks or a string) shapes,
-    since the exact gateway format cannot be verified off-network.
+    Anthropic-style (top-level ``content``) shapes, where ``content`` itself may
+    be a plain string or a list of ``{"type": "text", "text": ...}`` blocks.
     """
     text = ""
     if isinstance(resp, dict):
         choices = resp.get("choices")
         if choices:
-            text = (choices[0].get("message") or {}).get("content", "") or ""
+            text = _content_to_text((choices[0].get("message") or {}).get("content", ""))
         else:
-            content = resp.get("content")
-            if isinstance(content, list):
-                text = "".join(
-                    b.get("text", "") for b in content if isinstance(b, dict)
-                )
-            elif isinstance(content, str):
-                text = content
+            text = _content_to_text(resp.get("content"))
 
         usage = resp.get("usage") or {}
         input_tokens = usage.get("input_tokens", usage.get("prompt_tokens", 0)) or 0
