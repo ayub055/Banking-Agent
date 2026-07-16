@@ -32,17 +32,21 @@ def generate_bank_report(
     from pipeline.renderers.combined_report_renderer import render_combined_report
     from data.loader import load_rg_salary_data
 
-    customer_report: Optional[CustomerReport] = None
+    # Load the salary-algorithm output once; it is threaded through the
+    # builder (account quality + event detection) and reused for narration,
+    # rendering, and the Excel export below.
+    rg_salary_raw = None
     try:
-        customer_report = build_customer_report(customer_id)
-    except Exception as e:
-        logger.warning(f"Banking report build failed for {customer_id}: {e}")
-
-    rg_salary_data = None
-    try:
-        rg_salary_data = load_rg_salary_data(customer_id) or None
+        rg_salary_raw = load_rg_salary_data(customer_id)
     except Exception as e:
         logger.warning(f"RG salary data unavailable for [{customer_id}]: {e}")
+    rg_salary_data = rg_salary_raw or None
+
+    customer_report: Optional[CustomerReport] = None
+    try:
+        customer_report = build_customer_report(customer_id, rg_salary_data=rg_salary_raw)
+    except Exception as e:
+        logger.warning(f"Banking report build failed for {customer_id}: {e}")
 
     if customer_report and customer_report.meta.transaction_count >= 10:
         try:

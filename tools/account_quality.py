@@ -214,15 +214,15 @@ def _empty_result() -> dict:
 # Public API
 # ---------------------------------------------------------------------------
 
-def compute_account_quality(customer_id: int, customer_report=None) -> dict:
+def compute_account_quality(customer_id: int, customer_report=None,
+                            rg_salary_data: Optional[dict] = None) -> dict:
     """Analyse whether this bank account is the customer's primary account.
-
-    Loads rg_salary_data internally so the caller only needs customer_id
-    and the already-built CustomerReport (for obligation fields).
 
     Args:
         customer_id:     The CRN / customer identifier.
         customer_report: The built CustomerReport (used for emis/bills/rent flags).
+        rg_salary_data:  Pre-loaded salary algorithm output; loaded internally
+                         when not provided (so the CSV is read once per report).
 
     Returns:
         dict with: account_type, confidence, primary_score, conduit_events,
@@ -230,12 +230,13 @@ def compute_account_quality(customer_id: int, customer_report=None) -> dict:
                    avg_monthly_debits, has_emi_debits, has_utility_debits,
                    has_rent_visible, has_small_ticket_txns, observations
     """
-    # --- Load salary algorithm output ---
-    try:
-        rg_salary_data = load_rg_salary_data(customer_id) or {}
-    except Exception as exc:
-        logger.warning("account_quality: load_rg_salary_data failed for %s: %s", customer_id, exc)
-        rg_salary_data = {}
+    # --- Load salary algorithm output (only if not passed in) ---
+    if rg_salary_data is None:
+        try:
+            rg_salary_data = load_rg_salary_data(customer_id) or {}
+        except Exception as exc:
+            logger.warning("account_quality: load_rg_salary_data failed for %s: %s", customer_id, exc)
+            rg_salary_data = {}
 
     rg_sal             = rg_salary_data.get("rg_sal") or {}
     salary_transactions = rg_sal.get("transactions", [])

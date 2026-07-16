@@ -260,10 +260,10 @@ def _build_checks(report: CustomerReport, scorecard: Optional[dict]) -> Optional
     if not items:
         return None
 
-    # Bucket each label into Risk / FCU / Fraud. Anything not listed defaults to Risk.
+    # Bucket each label into Risk / FCU / Fraud. Anything not listed defaults
+    # to Risk. Labels must match checklist_builder's emitted labels exactly.
     FCU_LABELS = {
         "Post-disbursement fund diversion",
-        "Post-salary self-transfer",
         "Big debits after salary credit (≥40% within 3d)",
         "Counterparties on both credit & debit",
         "Land purchase payments",
@@ -273,10 +273,7 @@ def _build_checks(report: CustomerReport, scorecard: Optional[dict]) -> Optional
     FRAUD_LABELS = {
         "ATM withdrawals elevated",
         "Transactions above 95th percentile",
-        "Betting / gaming spend",
-        "Round-trip transfer detected",
         "Circular entry (mirror credit/debit)",
-        "Credit-spend dependency",
     }
 
     def _to_check(it: dict) -> dict:
@@ -323,166 +320,6 @@ def _build_checks(report: CustomerReport, scorecard: Optional[dict]) -> Optional
         "fraud": fraud,
         "summary": f"{len(all_checks)} checks · {red_count} red · {amber_count} amber",
     }
-
-
-def _checks_risk(report, sig_by_label, events_by_type) -> List[dict]:
-    out: List[dict] = []
-
-    # 1. EMI to income
-    emi_total = sum(float(e.amount) for e in (report.emis or []))
-    sal_avg = (report.salary.avg_amount if report.salary else 0) or 0
-    if sal_avg > 0 and emi_total > 0:
-        pct = emi_total / sal_avg * 100
-        color = "red" if pct >= 50 else ("amber" if pct >= 40 else "green")
-        out.append({
-            "label": "EMI-to-Income",
-            "detail": f"{pct:.0f}% — {'breach' if color=='red' else 'within' if color=='green' else 'elevated'} of affordability threshold",
-            "color": color,
-        })
-    elif sal_avg > 0:
-        out.append({"label": "EMI-to-Income", "detail": "No EMIs detected", "color": "green"})
-
-    # 2. NACH / cheque bounce events
-    bounce_events = events_by_type.get("nach_bounce", []) + events_by_type.get("cheque_bounce", [])
-    if bounce_events:
-        n = len(bounce_events)
-        out.append({
-            "label": f"{n} bounce{'s' if n != 1 else ''} detected",
-            "detail": bounce_events[0].get("description", "")[:90],
-            "color": "amber" if n == 1 else "red",
-        })
-    else:
-        out.append({"label": "No NACH / cheque bounces", "detail": "No bounce events", "color": "green"})
-
-    # 3. Salary regularity
-    sal = report.salary
-    if sal:
-        n_months = len(report.monthly_cashflow or []) or 6
-        ok = sal.frequency >= max(3, n_months - 1)
-        out.append({
-            "label": "Salary credited regularly",
-            "detail": f"{sal.frequency}/{n_months} months present",
-            "color": "green" if ok else "amber",
-        })
-    else:
-        out.append({"label": "Salary not detected", "detail": "No salary credits found", "color": "amber"})
-
-    # 4. Income signal from scorecard (if present)
-    inc = sig_by_label.get("Income")
-    if inc:
-        out.append({
-            "label": f"Income — {inc.get('value', '')}",
-            "detail": inc.get("note", ""),
-            "color": _rag_to_color(inc.get("rag")),
-        })
-
-    return out[:4]
-
-
-def _checks_fcu(report, sig_by_label, events_by_type) -> List[dict]:
-    out: List[dict] = []
-
-    # 1. Round-trip
-    rt = events_by_type.get("round_trip", [])
-    if rt:
-        out.append({"label": "Round-trip detected", "detail": rt[0].get("description", "")[:100], "color": "red"})
-    else:
-        out.append({"label": "No round-trip patterns", "detail": "Clean", "color": "green"})
-
-    # 2. Post-salary routing / self-transfer
-    routing = events_by_type.get("post_salary_routing", []) + events_by_type.get("self_transfer_post_salary", [])
-    if routing:
-        out.append({
-            "label": "Post-salary routing",
-            "detail": routing[0].get("description", "")[:100],
-            "color": "amber" if len(routing) <= 1 else "red",
-        })
-    else:
-        out.append({"label": "No post-salary routing", "detail": "Clean", "color": "green"})
-
-    # 3. Account quality
-    aq = report.account_quality or {}
-    if aq:
-        atype = (aq.get("account_type") or "unknown").title()
-        score = aq.get("primary_score", aq.get("score"))
-        color_map = {"Primary": "green", "Secondary": "amber", "Conduit": "red"}
-        out.append({
-            "label": f"Account type — {atype}",
-            "detail": f"Confidence {score}/100" if score is not None else "",
-            "color": color_map.get(atype, "amber"),
-        })
-
-    # 4. Large single credit / loan-redistribution / post-disbursement usage
-    suspicious_credit = (
-        events_by_type.get("large_single_credit", [])
-        + events_by_type.get("loan_redistribution_suspect", [])
-        + events_by_type.get("post_disbursement_usage", [])
-    )
-    if suspicious_credit:
-        out.append({
-            "label": "Inflow / disbursement anomaly",
-            "detail": suspicious_credit[0].get("description", "")[:100],
-            "color": "amber",
-        })
-    else:
-        out.append({"label": "Inflow patterns clean", "detail": "No anomalous large credits", "color": "green"})
-
-    return out[:4]
-
-
-def _checks_fraud(report, sig_by_label, events_by_type) -> List[dict]:
-    out: List[dict] = []
-
-    # 1. Betting / gaming spend
-    red_flag = sig_by_label.get("Transaction Red flag")
-    if red_flag and red_flag.get("rag") in ("red", "amber"):
-        out.append({
-            "label": "Betting / Gaming spend",
-            "detail": f"{red_flag.get('value', '')} — {red_flag.get('note', '')}",
-            "color": _rag_to_color(red_flag.get("rag")),
-        })
-    elif red_flag:
-        out.append({
-            "label": "No betting / gaming spend",
-            "detail": red_flag.get("note", "Clean"),
-            "color": "green",
-        })
-
-    # 2. ATM withdrawal trend
-    atm = events_by_type.get("atm_withdrawal", [])
-    if atm:
-        ev = atm[0]
-        elevated = ev.get("_is_elevated")
-        out.append({
-            "label": "ATM withdrawal trend",
-            "detail": ev.get("description", "")[:100],
-            "color": "amber" if elevated else "green",
-        })
-    else:
-        out.append({"label": "No ATM withdrawals", "detail": "None detected", "color": "green"})
-
-    # 3. PF / FD / SIP positive signals (fraud column shows trust signals when low risk)
-    positives = []
-    for t in ("pf_withdrawal", "fd_creation", "sip_investment"):
-        if events_by_type.get(t):
-            positives.append(t.replace("_", " ").title())
-    if positives:
-        out.append({"label": "Investment activity", "detail": ", ".join(positives), "color": "green"})
-    else:
-        out.append({"label": "No mule-pattern credits", "detail": "Inflow narrations consistent", "color": "green"})
-
-    # 4. Credit-spend dependency
-    csd = events_by_type.get("credit_spend_dependency", [])
-    if csd:
-        out.append({
-            "label": "Credit-spend dependency",
-            "detail": csd[0].get("description", "")[:100],
-            "color": "amber",
-        })
-    else:
-        out.append({"label": "No spend-dependency pattern", "detail": "Spending not tied to credit timing", "color": "green"})
-
-    return out[:4]
 
 
 # ---------------------------------------------------------------------------
@@ -793,7 +630,7 @@ def _build_analysis(report: CustomerReport, cust_df: Optional[pd.DataFrame]) -> 
             occ["loan_credit"].append((ts, amt))
         elif et == "large_single_credit":
             occ["large_credit"].append((ts, amt))
-        elif et == "nach_bounce":
+        elif et == "ecs_bounce":
             occ["bounce_charges"].append((ts, amt))
 
     # Bucket helpers
@@ -1032,7 +869,7 @@ def _build_loan_cards(report: CustomerReport) -> Optional[List[dict]]:
         else:
             bounces = sum(
                 1 for ev in bounce_events
-                if ev.get("type") in ("nach_bounce", "cheque_bounce")
+                if ev.get("type") == "ecs_bounce"
                 and emi_norm in _normalize_for_bucket(ev.get("description", "") or "")
             )
         sample = emi.sample_transaction or {}
@@ -1224,20 +1061,6 @@ def _fallback_months(n: int) -> List[str]:
     return [f"M{i+1}" for i in range(n)]
 
 
-def _group_events_by_type(events: List[dict]) -> Dict[str, List[dict]]:
-    out: Dict[str, List[dict]] = {}
-    for ev in events:
-        t = ev.get("type")
-        if not t:
-            continue
-        out.setdefault(t, []).append(ev)
-    return out
-
-
-def _rag_to_color(rag: Optional[str]) -> str:
-    return {"green": "green", "amber": "amber", "red": "red"}.get(rag or "", "amber")
-
-
 def _frequency_label(count: int) -> str:
     if count >= 5:
         return "Monthly"
@@ -1252,18 +1075,6 @@ def _frequency_label_with_range(count: int, win: dict) -> str:
     if rng:
         return f"{base} · day {rng[0]}-{rng[1]}"
     return base
-
-
-def _fmt_short_date(value: Any) -> str:
-    if not value:
-        return ""
-    try:
-        dt = pd.to_datetime(str(value), errors="coerce")
-        if pd.isna(dt):
-            return ""
-        return dt.strftime("%d-%b")
-    except Exception:
-        return ""
 
 
 def _fmt_full_date(value: Any) -> str:

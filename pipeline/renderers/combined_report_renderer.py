@@ -11,7 +11,7 @@ from jinja2 import Environment, FileSystemLoader
 
 
 from schemas.customer_report import CustomerReport
-from utils.helpers import mask_customer_id, format_inr, format_inr_units, strip_segment_prefix
+from utils.helpers import mask_customer_id, format_inr
 
 
 def render_combined_report(
@@ -48,13 +48,6 @@ def render_combined_report(
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 
-    # Also copy HTML to dedicated combined_report_html_version folder
-    html_version_dir = output_file.parent / "combined_report_html_version"
-    html_version_dir.mkdir(parents=True, exist_ok=True)
-    html_version_path = html_version_dir / output_file.name
-    with open(str(html_version_path), "w", encoding="utf-8") as f:
-        f.write(html_content)
-
     return html_path
 
 
@@ -81,13 +74,9 @@ def render_combined_report_html(
     )
     env.filters["mask_id"] = mask_customer_id
     env.filters["inr"] = format_inr
-    env.filters["inr_units"] = format_inr_units
-    env.filters["segment"] = strip_segment_prefix
 
     from tools.scorecard import compute_scorecard
     scorecard = compute_scorecard(customer_report=customer_report, rg_salary_data=rg_salary_data)
-    if combined_summary:
-        scorecard["narrative"] = combined_summary
 
     bank_v2_ctx = None
     try:

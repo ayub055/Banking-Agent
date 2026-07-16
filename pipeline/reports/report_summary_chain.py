@@ -8,17 +8,15 @@ import logging
 from typing import Optional
 
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 
 from utils.llm_factory import create_chat_model
 
 from schemas.customer_report import CustomerReport
-from utils.helpers import mask_customer_id, format_inr
-from config.settings import EXPLAINER_MODEL, SUMMARY_MODEL, LLM_TEMPERATURE, LLM_TEMPERATURE_CREATIVE, LLM_SEED, is_thinking_model
+from utils.helpers import mask_customer_id
+from config.settings import SUMMARY_MODEL, is_thinking_model
 import time as _time
-from utils.llm_utils import strip_think, extract_reasoning, log_token_usage
+from utils.llm_utils import extract_reasoning, log_token_usage
 from config.prompts import CUSTOMER_REVIEW_PROMPT
-import config.thresholds as T
 
 logger = logging.getLogger(__name__)
 

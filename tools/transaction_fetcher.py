@@ -21,6 +21,7 @@ from schemas.transaction_summary import (
 from utils.narration_utils import (
     extract_recipient_name,
     clean_narration,
+    are_similar,
 )
 
 try:
@@ -216,7 +217,7 @@ def _fuzzy_group_transactions(
         matched_group = None
         for group in groups:
             rep_name = group['representative']
-            if _are_similar(recipient, rep_name):
+            if are_similar(recipient, rep_name, SIMILARITY_THRESHOLD):
                 matched_group = group
                 break
 
@@ -251,13 +252,6 @@ def _fuzzy_group_transactions(
             ))
 
     return result
-
-
-def _are_similar(s1: str, s2: str, threshold: int = SIMILARITY_THRESHOLD) -> bool:
-    """Fuzzy similarity check — delegates to the canonical
-    ``utils.narration_utils.are_similar``."""
-    from utils.narration_utils import are_similar
-    return are_similar(s1, s2, threshold)
 
 
 def _group_by_exact_match(

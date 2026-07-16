@@ -29,7 +29,8 @@ from tools.merchant_features import compute_all_merchant_features
 from utils.helpers import safe_call
 
 
-def build_customer_report(customer_id: int, months: int = 6) -> CustomerReport:
+def build_customer_report(customer_id: int, months: int = 6,
+                          rg_salary_data: dict = None) -> CustomerReport:
     """
     Build a customer report by collecting data from existing tools.
 
@@ -39,6 +40,9 @@ def build_customer_report(customer_id: int, months: int = 6) -> CustomerReport:
     Args:
         customer_id: Customer identifier
         months: Analysis period in months (default 6)
+        rg_salary_data: Pre-loaded salary algorithm output, threaded into
+            account-quality and event detection so the CSV is read once per
+            report (each falls back to loading it internally when None).
 
     Returns:
         CustomerReport with all available sections populated
@@ -108,10 +112,11 @@ def build_customer_report(customer_id: int, months: int = 6) -> CustomerReport:
     )
 
     # Compute account quality after base report is built (needs emis/bills/rent)
-    account_quality = safe_call(compute_account_quality, customer_id, customer_report=base_report)
+    account_quality = safe_call(compute_account_quality, customer_id,
+                                customer_report=base_report, rg_salary_data=rg_salary_data)
 
     # Detect semantic events from raw narrations (PF withdrawal, post-salary routing, etc.)
-    events = safe_call(detect_events, customer_id) or None
+    events = safe_call(detect_events, customer_id, rg_salary_data=rg_salary_data) or None
 
     # Augment with L2-tagged loan disbursals that the keyword rules missed.
     # detect_events already produces loan_disbursal events from
@@ -318,7 +323,7 @@ def _get_emi_block(cust_df) -> Optional[list]:
     EMI narrations + home-loan EMIs). One EMIBlock per recipient group.
     """
     from config.keywords import EMI_ALL_KEYWORDS
-    from tools.event_detector import _kw_to_regex
+    from utils.narration_utils import like_to_regex as _kw_to_regex
     from tools.category.registry import has_role
     from utils.narration_utils import (
         extract_recipient_name,

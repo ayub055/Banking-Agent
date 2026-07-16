@@ -223,10 +223,8 @@ FUZZY_GROUP_THRESHOLD = 70  # token_set_ratio score (0-100) — shared default
 def are_similar(s1: str, s2: str, threshold: int = FUZZY_GROUP_THRESHOLD) -> bool:
     """Canonical fuzzy similarity check for two narrations / merchant names.
 
-    Single home for the check previously duplicated as ``_are_similar`` in
-    ``tools/transaction_fetcher`` and ``tools/merchant_features``. Compares
-    ``normalize_narration``-d forms with ``fuzz.token_set_ratio``; falls back
-    to case-insensitive equality when fuzzywuzzy is unavailable.
+    Compares ``normalize_narration``-d forms with ``fuzz.token_set_ratio``;
+    falls back to case-insensitive equality when fuzzywuzzy is unavailable.
     """
     try:
         from fuzzywuzzy import fuzz
@@ -404,36 +402,3 @@ def is_salary_narration(narration: str) -> bool:
     narration_lower = narration.lower()
 
     return any(keyword in narration_lower for keyword in SALARY_KEYWORDS)
-
-
-def get_transaction_category_from_narration(narration: str) -> str:
-    """
-    Infer transaction category from narration text.
-
-    Args:
-        narration: Transaction narration
-
-    Returns:
-        Inferred category string
-    """
-    if not narration:
-        return "UNKNOWN"
-
-    narration_lower = narration.lower()
-
-    if is_salary_narration(narration):
-        return "SALARY"
-
-    if 'upi' in narration_lower:
-        return "UPI"
-
-    if 'imps' in narration_lower:
-        return "IMPS"
-
-    if 'cash deposit' in narration_lower:
-        return "CASH_DEPOSIT"
-
-    if 'atm' in narration_lower or 'withdrawal' in narration_lower:
-        return "ATM"
-
-    return "OTHER"

@@ -86,34 +86,6 @@ def get_transactions_df() -> pd.DataFrame:
     return load_transactions()
 
 
-def get_data_summary() -> str:
-    """
-    Generate a summary of the transaction data.
-
-    Returns:
-        String with data statistics
-    """
-    df = get_transactions_df()
-
-    total_credits = df[df['dr_cr_indctor'] == 'C']['tran_amt_in_ac'].sum()
-    total_debits = df[df['dr_cr_indctor'] == 'D']['tran_amt_in_ac'].sum()
-
-    summary = f"""
-Transaction Data Summary
-========================
-Total Records: {len(df)}
-Unique Customers: {df['cust_id'].nunique()}
-Date Range: {df['tran_date'].min()} to {df['tran_date'].max()}
-
-Transaction Types: {df['tran_type'].unique().tolist()}
-Categories: {df['category_of_txn'].unique().tolist()}
-
-Total Credits (Income): ${total_credits:,.2f}
-Total Debits (Expenses): ${total_debits:,.2f}
-"""
-    return summary
-
-
 def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
     """
     Load internal salary algorithm outputs for a customer.

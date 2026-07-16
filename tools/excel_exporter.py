@@ -5,9 +5,6 @@ Usage (single customer):
     row = build_excel_row(customer_id, customer_report,
                           combined_summary, report_path, rg_salary_data)
     export_row_to_excel(row, "reports/excel/100070028.xlsx")
-
-Usage (batch merge):
-    merge_excel_reports("reports/excel/", "reports/batch_output.xlsx")
 """
 
 from __future__ import annotations
@@ -201,7 +198,6 @@ def export_row_to_excel(row: Dict[str, Any], output_path: str) -> str:
     Write a single customer row to an Excel file.
 
     The file is always created fresh (one row per customer file).
-    Use merge_excel_reports() afterwards to combine into one master file.
 
     Args:
         row:         Dict from build_excel_row()
@@ -214,45 +210,4 @@ def export_row_to_excel(row: Dict[str, Any], output_path: str) -> str:
     df = pd.DataFrame([row], columns=TEMPLATE_COLUMNS)
     df.to_excel(output_path, index=False)
     logger.info("Excel row written → %s", output_path)
-    return os.path.abspath(output_path)
-
-
-# ---------------------------------------------------------------------------
-# Batch merge
-# ---------------------------------------------------------------------------
-
-def merge_excel_reports(
-    excel_dir: str,
-    output_path: str,
-    pattern: str = "*.xlsx",
-) -> str:
-    """
-    Merge all per-customer Excel files in excel_dir into one master file.
-
-    Args:
-        excel_dir:   Directory containing per-customer .xlsx files
-        output_path: Destination for the merged file
-        pattern:     Glob pattern for source files (default: *.xlsx)
-
-    Returns:
-        Absolute path to the merged file
-    """
-    source_files = sorted(Path(excel_dir).glob(pattern))
-    if not source_files:
-        raise FileNotFoundError(f"No Excel files matching '{pattern}' in {excel_dir}")
-
-    frames = [pd.read_excel(f) for f in source_files]
-    merged = pd.concat(frames, ignore_index=True)
-
-    # Enforce template column order (add missing cols as empty, drop extras)
-    for col in TEMPLATE_COLUMNS:
-        if col not in merged.columns:
-            merged[col] = None
-    merged = merged[TEMPLATE_COLUMNS]
-
-    Path(output_path).parent.mkdir(parents=True, exist_ok=True)
-    merged.to_excel(output_path, index=False)
-    logger.info(
-        "Merged %d customer rows → %s", len(merged), output_path
-    )
     return os.path.abspath(output_path)

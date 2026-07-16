@@ -5,14 +5,9 @@ report generation pipeline. All sections are optional to support
 conditional rendering based on data availability.
 """
 
-from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Dict, Any
+from pydantic import BaseModel, Field
 from datetime import datetime
-
-
-# Valid values for constrained fields
-VALID_RISK_LEVELS = ("low", "medium", "high", "unknown")
-VALID_BALANCE_TRENDS = ("increasing", "decreasing", "stable", "no_data", "insufficient_data", "unknown")
 
 
 class ReportMeta(BaseModel):
@@ -65,45 +60,6 @@ class RentBlock(BaseModel):
     dates: List[str] = Field(default_factory=list, description="All occurrence dates (YYYY-MM-DD)")
 
 
-class SavingsBlock(BaseModel):
-    """Savings analysis block - derived from income vs spending."""
-    total_income: float = Field(description="Total credits/income")
-    total_spending: float = Field(description="Total debits/spending")
-    net_savings: float = Field(description="Income minus spending")
-    savings_rate: float = Field(description="Savings as percentage of income (0-1)")
-    avg_monthly_savings: float = Field(default=0, description="Average monthly net savings")
-    months_analyzed: int = Field(default=0, description="Number of months in analysis")
-
-
-class RiskIndicatorsBlock(BaseModel):
-    """Risk indicators block - flags potential financial risks."""
-    income_stability_score: float = Field(description="Income stability (0-100, higher=more stable)")
-    balance_trend: str = Field(description="increasing/decreasing/stable")
-    credit_spike_count: int = Field(default=0, description="Number of unusual credit transactions")
-    debit_spike_count: int = Field(default=0, description="Number of unusual spending transactions")
-    risk_flags: List[str] = Field(default_factory=list, description="List of identified risk factors")
-    risk_level: str = Field(default="unknown", description="low/medium/high risk assessment")
-
-    @field_validator('balance_trend')
-    @classmethod
-    def validate_balance_trend(cls, v: str) -> str:
-        if v not in VALID_BALANCE_TRENDS:
-            return "unknown"
-        return v
-
-    @field_validator('risk_level')
-    @classmethod
-    def validate_risk_level(cls, v: str) -> str:
-        if v not in VALID_RISK_LEVELS:
-            return "unknown"
-        return v
-
-    @field_validator('income_stability_score')
-    @classmethod
-    def validate_stability_score(cls, v: float) -> float:
-        return max(0.0, min(100.0, v))  # Clamp to 0-100
-
-
 class CustomerReport(BaseModel):
     """
     Canonical customer report object.
@@ -133,16 +89,6 @@ class CustomerReport(BaseModel):
     emis: Optional[List[EMIBlock]] = None
     bills: Optional[List[BillBlock]] = None
     rent: Optional[RentBlock] = None
-
-    # Section 5 - Derived analysis blocks
-    savings: Optional[SavingsBlock] = Field(
-        default=None,
-        description="Savings analysis derived from income vs spending"
-    )
-    risk_indicators: Optional[RiskIndicatorsBlock] = Field(
-        default=None,
-        description="Risk assessment indicators"
-    )
 
     # Section 2 - LLM-generated summary (optional)
     customer_review: Optional[str] = Field(
@@ -195,10 +141,6 @@ class CustomerReport(BaseModel):
             sections.append("bills")
         if self.rent:
             sections.append("rent")
-        if self.savings:
-            sections.append("savings")
-        if self.risk_indicators:
-            sections.append("risk_indicators")
         if self.account_quality:
             sections.append("account_quality")
         if self.events:

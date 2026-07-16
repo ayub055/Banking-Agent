@@ -17,6 +17,7 @@ from utils.narration_utils import (
     extract_recipient_name,
     clean_narration,
     normalize_narration,
+    are_similar,
 )
 from tools.rules import is_self_transfer
 
@@ -33,13 +34,6 @@ _SIMILARITY_THRESHOLD = 70
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
-
-def _are_similar(s1: str, s2: str) -> bool:
-    """Fuzzy similarity check — delegates to the canonical
-    ``utils.narration_utils.are_similar``."""
-    from utils.narration_utils import are_similar
-    return are_similar(s1, s2, _SIMILARITY_THRESHOLD)
-
 
 def _filter_transactions(
     transactions: List[Dict[str, Any]],
@@ -89,7 +83,7 @@ def _group_by_merchant(
         # Find matching group via fuzzy match
         matched_key = None
         for key in group_keys:
-            if _are_similar(merchant, key):
+            if are_similar(merchant, key, _SIMILARITY_THRESHOLD):
                 matched_key = key
                 break
 
@@ -128,13 +122,15 @@ def get_merchant_distinct_months(
     transactions: List[Dict[str, Any]],
     direction: Optional[str] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Number of distinct months each merchant appeared in.
 
     Returns:
         List of dicts with merchant, direction, distinct_months, months.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         months = sorted(set(_get_month(t) for t in txns if _get_month(t)))
@@ -152,13 +148,15 @@ def get_merchant_monthly_counts(
     transactions: List[Dict[str, Any]],
     direction: Optional[str] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Monthly transaction count per merchant.
 
     Returns:
         List of dicts with merchant, direction, monthly_counts, total_count.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         monthly: Dict[str, int] = defaultdict(int)
@@ -180,13 +178,15 @@ def get_merchant_monthly_amount_stats(
     transactions: List[Dict[str, Any]],
     direction: Optional[str] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Monthly avg, median, max amount per merchant.
 
     Returns:
         List of dicts with merchant, direction, avg/median/max/total_amount.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         amounts = [float(t.get("tran_amt_in_ac", 0)) for t in txns]
@@ -210,13 +210,15 @@ def get_regular_merchants(
     total_months: int = 6,
     direction: Optional[str] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Merchants appearing in at least min_months distinct months.
 
     Returns:
         List of dicts with merchant, direction, distinct_months, is_regular, avg_amount.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         months = set(_get_month(t) for t in txns if _get_month(t))
@@ -237,6 +239,7 @@ def get_regular_merchants(
 def get_anomaly_merchants(
     transactions: List[Dict[str, Any]],
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Merchants flagged as anomalous — one-time large transactions.
 
@@ -257,7 +260,8 @@ def get_anomaly_merchants(
     median_debit = statistics.median(debit_amounts)
     threshold = median_debit * 3
 
-    groups = _group_by_merchant(transactions, exclude_self_transfers=exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, exclude_self_transfers=exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         if len(txns) != 1:
@@ -278,13 +282,15 @@ def get_merchant_concentration(
     transactions: List[Dict[str, Any]],
     direction: str = "D",
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """Spending concentration across merchants.
 
     Returns:
         Dict with top_1_pct, top_3_pct, hhi, total_merchants.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     if not groups:
         return {"top_1_pct": 0, "top_3_pct": 0, "hhi": 0, "total_merchants": 0}
 
@@ -315,6 +321,7 @@ def get_merchant_amount_trend(
     transactions: List[Dict[str, Any]],
     direction: Optional[str] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Amount trend per merchant (first-half vs second-half average).
 
@@ -323,7 +330,8 @@ def get_merchant_amount_trend(
     Returns:
         List of dicts with merchant, direction, trend, first_half_avg, second_half_avg.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         months = sorted(set(_get_month(t) for t in txns if _get_month(t)))
@@ -366,13 +374,15 @@ def get_round_amount_merchants(
     transactions: List[Dict[str, Any]],
     direction: str = "D",
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Merchants where >80% of transactions are round amounts (divisible by 100).
 
     Returns:
         List of dicts with merchant, round_pct, count.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     result = []
     for merchant, txns in groups.items():
         amounts = [float(t.get("tran_amt_in_ac", 0)) for t in txns]
@@ -393,13 +403,15 @@ def get_new_merchant_ratio(
     transactions: List[Dict[str, Any]],
     direction: str = "D",
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """Ratio of merchants that first appeared in the last month of data.
 
     Returns:
         Dict with new_merchant_count, total_merchant_count, ratio, new_merchants.
     """
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     if not groups:
         return {"new_merchant_count": 0, "total_merchant_count": 0, "ratio": 0, "new_merchants": []}
 
@@ -435,6 +447,7 @@ def get_emerging_merchants(
     recent_months: int = 3,
     direction: str = "D",
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, Any]:
     """Merchants appearing in recent N months but absent in the preceding N months.
 
@@ -442,7 +455,8 @@ def get_emerging_merchants(
         Dict with emerging_merchants list, recent_window, prior_window.
     """
     empty = {"emerging_merchants": [], "recent_window": "", "prior_window": ""}
-    groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction, exclude_self_transfers)
     if not groups:
         return empty
 
@@ -481,6 +495,7 @@ def get_favourite_merchants_ipt(
     transactions: List[Dict[str, Any]],
     top_n: Optional[int] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Top-N merchants by engagement, enriched with Inter-Purchase Time.
 
@@ -498,8 +513,9 @@ def get_favourite_merchants_ipt(
     if top_n is None:
         top_n = T.MERCHANT_FAVOURITE_TOP_N
 
-    groups = _group_by_merchant(transactions, direction=None,
-                                exclude_self_transfers=exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction=None,
+                                    exclude_self_transfers=exclude_self_transfers)
 
     result: Dict[str, List[Dict[str, Any]]] = {"debit": [], "credit": []}
 
@@ -557,6 +573,7 @@ def get_significant_merchants(
     transactions: List[Dict[str, Any]],
     threshold: Optional[float] = None,
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Merchants whose debit or credit volume >= threshold % of total flow.
 
@@ -572,8 +589,9 @@ def get_significant_merchants(
     if threshold is None:
         threshold = T.MERCHANT_SIGNIFICANT_PCT
 
-    groups = _group_by_merchant(transactions, direction=None,
-                                exclude_self_transfers=exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction=None,
+                                    exclude_self_transfers=exclude_self_transfers)
     if not groups:
         return []
 
@@ -611,6 +629,7 @@ def get_significant_merchants(
 def get_bidirectional_merchants(
     transactions: List[Dict[str, Any]],
     exclude_self_transfers: bool = True,
+    groups: Optional[Dict[str, List[Dict[str, Any]]]] = None,
 ) -> List[Dict[str, Any]]:
     """Merchants with both credit and debit transactions on different dates.
 
@@ -630,8 +649,9 @@ def get_bidirectional_merchants(
     Returns:
         List of dicts sorted by abs(net_flow) descending.
     """
-    groups = _group_by_merchant(transactions, direction=None,
-                                exclude_self_transfers=exclude_self_transfers)
+    if groups is None:
+        groups = _group_by_merchant(transactions, direction=None,
+                                    exclude_self_transfers=exclude_self_transfers)
     result = []
 
     for merchant, txns in groups.items():
@@ -712,8 +732,10 @@ def compute_all_merchant_features(
 ) -> Dict[str, Any]:
     """Compute all merchant features for a customer.
 
-    Loads transactions via get_transactions_df(), groups once, then
-    calls each feature function.
+    Loads transactions via get_transactions_df(), runs the fuzzy merchant
+    grouping ONCE per direction shape (all-directions and debit-only), then
+    passes the precomputed groups into each feature function instead of
+    re-grouping 13 times.
 
     Args:
         customer_id: Customer identifier.
@@ -731,18 +753,25 @@ def compute_all_merchant_features(
 
     transactions = cust_df.to_dict("records")
 
+    # Two grouping shapes cover every feature: direction=None (both sides)
+    # and direction="D" (debit-only). Grouping is direction-sensitive (the
+    # greedy fuzzy pass depends on which txns are present), so each shape is
+    # computed exactly as the feature functions would themselves.
+    groups_all = _group_by_merchant(transactions, None, exclude_self_transfers)
+    groups_debit = _group_by_merchant(transactions, "D", exclude_self_transfers)
+
     return {
-        "distinct_months": get_merchant_distinct_months(transactions, exclude_self_transfers=exclude_self_transfers),
-        "monthly_counts": get_merchant_monthly_counts(transactions, exclude_self_transfers=exclude_self_transfers),
-        "amount_stats": get_merchant_monthly_amount_stats(transactions, exclude_self_transfers=exclude_self_transfers),
-        "regular_merchants": get_regular_merchants(transactions, exclude_self_transfers=exclude_self_transfers),
-        "anomaly_merchants": get_anomaly_merchants(transactions, exclude_self_transfers=exclude_self_transfers),
-        "concentration": get_merchant_concentration(transactions, exclude_self_transfers=exclude_self_transfers),
-        "amount_trends": get_merchant_amount_trend(transactions, exclude_self_transfers=exclude_self_transfers),
-        "round_amount_merchants": get_round_amount_merchants(transactions, exclude_self_transfers=exclude_self_transfers),
-        "new_merchant_ratio": get_new_merchant_ratio(transactions, exclude_self_transfers=exclude_self_transfers),
-        "emerging_merchants": get_emerging_merchants(transactions, exclude_self_transfers=exclude_self_transfers),
-        "favourite_merchants_ipt": get_favourite_merchants_ipt(transactions, exclude_self_transfers=exclude_self_transfers),
-        "significant_merchants": get_significant_merchants(transactions, exclude_self_transfers=exclude_self_transfers),
-        "bidirectional_merchants": get_bidirectional_merchants(transactions, exclude_self_transfers=exclude_self_transfers),
+        "distinct_months": get_merchant_distinct_months(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "monthly_counts": get_merchant_monthly_counts(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "amount_stats": get_merchant_monthly_amount_stats(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "regular_merchants": get_regular_merchants(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "anomaly_merchants": get_anomaly_merchants(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "concentration": get_merchant_concentration(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_debit),
+        "amount_trends": get_merchant_amount_trend(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "round_amount_merchants": get_round_amount_merchants(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_debit),
+        "new_merchant_ratio": get_new_merchant_ratio(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_debit),
+        "emerging_merchants": get_emerging_merchants(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_debit),
+        "favourite_merchants_ipt": get_favourite_merchants_ipt(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "significant_merchants": get_significant_merchants(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
+        "bidirectional_merchants": get_bidirectional_merchants(transactions, exclude_self_transfers=exclude_self_transfers, groups=groups_all),
     }

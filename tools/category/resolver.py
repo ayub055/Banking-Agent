@@ -193,22 +193,3 @@ def _fuzzy_match_narration(narration: str, category: str, threshold: int) -> boo
     # Use token set ratio for flexible matching
     score = fuzz.token_set_ratio(narration, category)
     return score >= threshold
-
-
-def category_presence_lookup(
-    customer_id: int,
-    category: str
-) -> Dict[str, Any]:
-    """
-    Tool function: Check if customer has transactions for a category.
-
-    This is the tool function registered with the executor.
-
-    Args:
-        customer_id: Customer identifier
-        category: Category to check
-
-    Returns:
-        Category presence result dictionary
-    """
-    return resolve_category_presence(customer_id, category)

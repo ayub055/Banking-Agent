@@ -102,16 +102,6 @@ ECS_BOUNCE_KEYWORDS = [
 ]
 
 # ---------------------------------------------------------------------------
-# Account-quality helpers
-# ---------------------------------------------------------------------------
-# Categories that indicate the account is used for everyday spending
-SMALL_TICKET_CATEGORIES = {
-    "Food_Restaurants", "Food", "Grocery", "Grocery_Supermarket",
-    "Fuel", "Pharmacy_Medical", "Pharmacy", "Shopping",
-    "Transport", "Entertainment", "Supermarket",
-}
-
-# ---------------------------------------------------------------------------
 # Event-detection keyword rules
 # ---------------------------------------------------------------------------
 # Fields:

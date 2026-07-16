@@ -40,11 +40,6 @@ logger = logging.getLogger(__name__)
 # Priority order: high → medium → positive
 _SIG_ORDER = {"high": 0, "medium": 1, "positive": 2}
 
-# Local aliases for imported keyword lists (keeps internal references short)
-_LENDER_FRAGMENTS = LENDER_FRAGMENTS
-_LOAN_DIS_KEYWORDS = LOAN_DISBURSEMENT_KEYWORDS
-KEYWORD_RULES = EVENT_KEYWORD_RULES
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -59,10 +54,10 @@ def _narr_upper(row) -> str:
 def _short_source(narration: str) -> str:
     """Extract a short source label from a narration string."""
     narration = narration.upper()
-    for lender in _LENDER_FRAGMENTS:
+    for lender in LENDER_FRAGMENTS:
         if lender in narration:
             return lender.strip().title()
-    for kw in _LOAN_DIS_KEYWORDS:
+    for kw in LOAN_DISBURSEMENT_KEYWORDS:
         if kw in narration:
             return "Bank/NBFC"
     return "Unknown source"
@@ -128,9 +123,9 @@ def _classify_credit_source(narration: str) -> str:
     """Classify a credit narration into a human-readable source label."""
     upper = narration.upper()
     # Loan disbursal
-    if any(kw in upper for kw in _LOAN_DIS_KEYWORDS):
+    if any(kw in upper for kw in LOAN_DISBURSEMENT_KEYWORDS):
         return "possible loan disbursal"
-    if any(lender in upper for lender in _LENDER_FRAGMENTS):
+    if any(lender in upper for lender in LENDER_FRAGMENTS):
         return "credit from bank/NBFC"
     # Salary
     for kw in SALARY_CREDIT_FRAGMENTS:
@@ -157,7 +152,7 @@ def _apply_keyword_rules(df: pd.DataFrame) -> list:
     """Apply all KEYWORD_RULES to the transaction DataFrame."""
     events = []
 
-    for rule in KEYWORD_RULES:
+    for rule in EVENT_KEYWORD_RULES:
         direction = rule["direction"]
         keywords  = rule["keywords"]
         min_months = rule.get("min_months", 0)
@@ -320,14 +315,15 @@ def _detect_loan_redistribution(df: pd.DataFrame, salary_amount: float) -> list:
     credits   = df[df["dr_cr_indctor"] == "C"].copy()
     debits    = df[df["dr_cr_indctor"] == "D"].copy()
 
+    from tools.rules import is_loan_disbursal
+
     for _, row in credits[credits["tran_amt_in_ac"] >= threshold].iterrows():
         narr   = _narr_upper(row)
         amount = float(row["tran_amt_in_ac"])
 
-        is_loan_dis  = any(kw in narr for kw in _LOAN_DIS_KEYWORDS)
-        is_from_bank = any(lender in narr for lender in _LENDER_FRAGMENTS)
-
-        if not (is_loan_dis or is_from_bank):
+        # Canonical disbursal narration rule (l2=None keeps this a pure
+        # keyword/lender check, matching the historical detector semantics).
+        if not is_loan_disbursal(None, narr):
             continue
 
         txn_date   = row["tran_date"]
@@ -394,14 +390,15 @@ def _detect_post_disbursement_usage(df: pd.DataFrame, salary_amount: float) -> l
     if credits.empty or debits.empty:
         return events
 
+    from tools.rules import is_loan_disbursal
+
     for _, row in credits[credits["tran_amt_in_ac"] >= min_amount].iterrows():
         narr   = _narr_upper(row)
         amount = float(row["tran_amt_in_ac"])
 
-        # Must look like a loan disbursement
-        is_loan_dis  = any(kw in narr for kw in _LOAN_DIS_KEYWORDS)
-        is_from_bank = any(lender in narr for lender in _LENDER_FRAGMENTS)
-        if not (is_loan_dis or is_from_bank):
+        # Must look like a loan disbursement — canonical narration rule
+        # (l2=None keeps this a pure keyword/lender check).
+        if not is_loan_disbursal(None, narr):
             continue
 
         txn_date   = row["tran_date"]
