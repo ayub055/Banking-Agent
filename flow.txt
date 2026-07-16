@@ -1,0 +1,102 @@
+1. The flow
+
+python main.py --customer <id> runs one linear path:
+
+main.py:main()
+ └─ tools/bank_report.py:generate_bank_report(cid, theme)
+     ├─ 1. pipeline/reports/customer_report_builder.py:build_customer_report(cid)   ← deterministic build
+     │      ├─ data/loader.py:get_transactions_df()          (rgs.csv, cached in module global)
+     │      ├─ tools/analytics.py:get_spending_by_category, get_cash_flow
+     │      ├─ tools/transaction_fetcher.py:fetch_transaction_summary  (called TWICE)
+     │      ├─ tools/category/resolver.py:resolve_category_presence    (rent, utilities)
+     │      ├─ tools/merchant_features.py:compute_all_merchant_features (13 sub-features)
+     │      ├─ tools/account_quality.py:compute_account_quality        (loads rg_sal CSV itself)
+     │      ├─ tools/event_detector.py:detect_events                   (loads rg_sal CSV itself)
+     │      └─ pipeline/reports/checklist_builder.py:compute_checklist
+     ├─ 2. data/loader.py:load_rg_salary_data(cid)            (rg_sal/rg_income CSVs — 3rd read)
+     ├─ 3. pipeline/reports/report_summary_chain.py:generate_customer_review   ← the ONLY LLM call
+     │      └─ utils/llm_factory.create_chat_model + config/prompts.CUSTOMER_REVIEW_PROMPT
+     ├─ 4. pipeline/renderers/combined_report_renderer.py:render_combined_report
+     │      ├─ tools/scorecard.py:compute_scorecard            (data computation inside the renderer)
+     │      ├─ pipeline/renderers/bank_v2_view_model.py:build_bank_v2_context
+     │      │      └─ re-loads transactions + tools/analytics.get_balance_trend
+     │      └─ Jinja render of templates/bank_report_v2.html   (written twice: output + copy dir)
+     └─ 5. tools/excel_exporter.py:build_excel_row + export_row_to_excel
+ └─ (optional --serve) pipeline/renderers/serve_report.py:serve
+
+2. File & function inventory
+
+Entry / orchestration
+
+┌──────────────────────┬────────────────────────────┐
+│         File         │     In-flow functions      │
+├──────────────────────┼────────────────────────────┤
+│ main.py              │ main, _extract_customer_id │
+├──────────────────────┼────────────────────────────┤
+│ tools/bank_report.py │ generate_bank_report       │
+└──────────────────────┴────────────────────────────┘
+
+Build layer — pipeline/reports/
+
+┌────────────────────────────┬───────────────────────────────────────────────────────────────────────────────┬───────────────────────────────┐
+│            File            │                               In-flow functions                               │       Dead in this file       │
+├────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┼───────────────────────────────┤
+│                            │ build_customer_report, _get_category_overview, _get_monthly_cashflow,         │                               │
+│ customer_report_builder.py │ _get_top_merchants, _get_salary_block, _get_latest_salary_transaction,        │ _get_savings_block,           │
+│                            │ _get_all_salary_dates, _get_emi_block, _get_rent_block, _get_bills_block,     │ _get_risk_indicators_block    │
+│                            │ _get_merchant_features, _augment_disbursal_events_from_l2                     │                               │
+├────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┼───────────────────────────────┤
+│ checklist_builder.py       │ compute_checklist (items K1–K16)                                              │ _BETTING_CATS constant        │
+├────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┼───────────────────────────────┤
+│ report_summary_chain.py    │ generate_customer_review, create_summary_chain, _build_data_summary           │ 8 unused imports              │
+├────────────────────────────┼───────────────────────────────────────────────────────────────────────────────┼───────────────────────────────┤
+│ key_findings.py            │ —                                                                             │ entire module (never          │
+│                            │                                                                               │ imported)                     │
+└────────────────────────────┴───────────────────────────────────────────────────────────────────────────────┴───────────────────────────────┘
+
+Tools layer — tools/
+
+┌────────────────────────┬────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│          File          │                                                 In-flow functions                                                  │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ analytics.py           │ get_spending_by_category, get_cash_flow, get_balance_trend (rest of the 15 functions are chat-path or              │
+│                        │ dead-helper-only)                                                                                                  │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ transaction_fetcher.py │ fetch_transaction_summary, _detect_salary, _group_similar_transactions, _fuzzy_group_transactions, _compute_score, │
+│                        │  _are_similar, _group_by_exact_match                                                                               │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ merchant_features.py   │ compute_all_merchant_features + 13 get_* features, _group_by_merchant, _filter_transactions, _are_similar,         │
+│                        │ _get_month, _parse_date                                                                                            │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ account_quality.py     │ compute_account_quality, _detect_conduit_events, _compute_atm_pct, _has_small_ticket, _build_observations,         │
+│                        │ _empty_result                                                                                                      │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│                        │ detect_events, _apply_keyword_rules, 8 _detect_* detectors, _deduplicate, format_events_for_prompt,                │
+│ event_detector.py      │ _classify_credit_source, _short_source, _extract_name_from_narration, _is_self, _extract_atm_address,              │
+│                        │ _compute_monthly_credit_stats                                                                                      │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ scorecard.py           │ compute_scorecard, _banking_signals, _derive_strengths_concerns (_rag is dead)                                     │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ excel_exporter.py      │ build_excel_row, export_row_to_excel (merge_excel_reports is dead)                                                 │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ rules.py               │ is_salary_credit, is_emi_debit, is_self_transfer, is_atm_debit (is_loan_disbursal, is_recurring_category are dead) │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ category/registry.py   │ l2_canonical, l1_of, has_role, categories_with_role, L2_TO_L1                                                      │
+├────────────────────────┼────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ category/resolver.py   │ resolve_category_presence, _find_matching_transactions, _fuzzy_match_narration                                     │
+└────────────────────────┴────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
+
+Render layer — pipeline/renderers/
+
+┌─────────────────────────────┬──────────────────────────────────────────────┬───────────────────────────────────────────────────────────────┐
+│            File             │              In-flow functions               │                             Dead                              │
+├─────────────────────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+│ combined_report_renderer.py │ render_combined_report,                      │ scorecard["narrative"] = … assignment                         │
+│                             │ render_combined_report_html                  │                                                               │
+├─────────────────────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+│                             │ build_bank_v2_context + ~30 _build_* /       │ _checks_risk, _checks_fcu, _checks_fraud,                     │
+│ bank_v2_view_model.py       │ _kpi_* / helper functions                    │ _group_events_by_type, _rag_to_color, _fmt_short_date (~170   │
+│                             │                                              │ lines)                                                        │
+├─────────────────────────────┼──────────────────────────────────────────────┼───────────────────────────────────────────────────────────────┤
+│ serve_report.py             │ serve (only with --serve)                    │                                                               │
+└─────────────────────────────┴──────────────────────────────────────────────┴───────────────────────────────────────────────────────────────┘
