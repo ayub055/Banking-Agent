@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from schemas.customer_report import CustomerReport
+from utils.helpers import safe_call as _safe
 
 logger = logging.getLogger(__name__)
 
@@ -83,16 +84,8 @@ def build_bank_v2_context(
 
 
 # ---------------------------------------------------------------------------
-# Internal helpers — fail-soft wrapper
+# Internal helpers — fail-soft wrapper (_safe) is the shared utils.helpers.safe_call
 # ---------------------------------------------------------------------------
-
-def _safe(fn, *args, **kwargs):
-    try:
-        return fn(*args, **kwargs)
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("bank_v2_view_model: %s failed: %s", fn.__name__, exc)
-        return None
-
 
 def _load_cust_df(customer_id: int) -> Optional[pd.DataFrame]:
     from data.loader import get_transactions_df

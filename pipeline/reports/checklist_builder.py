@@ -3,391 +3,299 @@
 Computes the review checklist (risk / FCU / fraud items) from a built
 CustomerReport plus raw transactions. Lives in the build layer so renderers
 stay pure: they consume ``CustomerReport.checklist`` and never compute it.
+
+Every check produces one ``{label, checked, severity, detail}`` item via
+``make_item``. Event-presence checks go through ``presence_item``; the heavier
+transaction-level checks are individual named functions guarded by
+``utils.helpers.safe_call`` so a failure in one is logged and skips only that
+item instead of the whole block.
 """
 
 from typing import Optional
 
 import numpy as np
+import pandas as pd
+
 import config.thresholds as T
-
 from schemas.customer_report import CustomerReport
+from utils.helpers import safe_call
 
 
-_BETTING_CATS = {"Digital_Betting_Gaming", "Betting_Gaming", "Betting", "Gaming"}
+# Item primitives
+
+def make_item(label, checked, severity, detail=None) -> dict:
+    """Build one checklist item dict — the single schema shared by every check."""
+    return {"label": label, "checked": checked, "severity": severity, "detail": detail}
 
 
-def compute_checklist(customer_report: Optional[CustomerReport]) -> dict:
+def events_of_type(events, etype) -> list:
+    """All events whose ``type`` equals ``etype``."""
+    return [e for e in events if e.get("type") == etype]
+
+
+def top_amount_description(events):
+    """Description of the highest-amount event in the list (detail selector)."""
+    return max(events, key=lambda e: float(e.get("amount") or 0)).get("description")
+
+
+def presence_item(label, events, severity_present, severity_absent="neutral", detail_fn=None) -> dict:
+    """Standard "is there an event of this kind?" item. """
+    if not events: return make_item(label, False, severity_absent, None)
+    detail = detail_fn(events) if detail_fn else events[0].get("description")
+    return make_item(label, True, severity_present, detail)
+
+
+# Public entry point
+def compute_checklist(customer_report: Optional[CustomerReport], cust_df=None) -> dict:
     """Compute yes/no checklist items from existing report data.
 
-    Returns dict with key ``banking``: a list of dicts
-    {label, checked, severity, detail}.
+    Returns a dict with key ``banking``: a list of {label, checked, severity,
+    detail} dicts. ``cust_df`` is the customer's raw transaction frame; the
+    report builder already holds it and threads it in to avoid a second
+    load+filter. When omitted it is loaded on demand.
     """
-    banking_items: list = []
     events = (customer_report.events or []) if customer_report else []
+    if cust_df is None and customer_report is not None:
+        cust_df = safe_call(load_customer_frame, customer_report.meta.customer_id)
 
-    def _events_of_type(etype):
-        return [e for e in events if e.get("type") == etype]
+    # K2 loan-disbursement events: explicit disbursal / redistribution, else a
+    # large single credit whose narration mentions a lender or loan.
+    loan_events = (events_of_type(events, "loan_disbursal") 
+                  or events_of_type(events, "loan_redistribution_suspect") 
+                  or [e for e in events_of_type(events, "large_single_credit") if "lender" in str(e.get("description", "")).lower()
+                  or "loan" in str(e.get("description", "")).lower()])
 
-    # ── BANKING CHECKLIST ─────────────────────────────────────────
+    items = [
+        presence_item("ECS / NACH bounces", events_of_type(events, "ecs_bounce"), "high"),
+        presence_item("Loan disbursement detected", loan_events, "high"),                 # K2
+        post_disbursement_item(events),                                                   # K3
+        salary_item(customer_report),                                                     # K4
+        presence_item("Big debits after salary credit (≥40% within 3d)", events_of_type(events, "self_transfer_post_salary"), "medium", detail_fn=top_amount_description),
+        presence_item("Circular entry (mirror credit/debit)", events_of_type(events, "round_trip"), "high", severity_absent="positive", detail_fn=top_amount_description),
+        safe_call(both_side_counterparties_item, cust_df, default=make_item("Counterparties on both credit & debit", False, "neutral", None)),
+        emi_item(customer_report),                                                        # K6
+        presence_item("NACH mandate EMI detected", events_of_type(events, "mandate_emi"), "medium"),
+        rent_item(customer_report),
+        presence_item("Credit card bill payments", events_of_type(events, "cc_payment"), "positive"),
+        presence_item("Land purchase payments", events_of_type(events, "land_payment"), "medium"),
+        atm_withdrawal_item(events),
+        safe_call(percentile_outliers_item, cust_df),
+        safe_call(automated_txn_item, cust_df),
+        safe_call(mode_shift_item, cust_df),
+    ]
+    
+    banking_items = [it for it in items if it is not None]  # K13–K15 return None when the transaction frame is empty/unavailable.
 
-    # K1. ECS/NACH bounces
-    bounces = _events_of_type("ecs_bounce")
-    banking_items.append({
-        "label": "ECS / NACH bounces",
-        "checked": bool(bounces),
-        "severity": "high" if bounces else "neutral",
-        "detail": bounces[0].get("description") if bounces else None,
-    })
+    emerging = emerging_merchants_item(customer_report)                                   # K16
+    if emerging is not None: banking_items.append(emerging)
+    return {"banking": banking_items}
 
-    # K2. Loan disbursement detected
-    loan_events = (_events_of_type("loan_disbursal")
-                   or _events_of_type("loan_redistribution_suspect")
-                   or [e for e in _events_of_type("large_single_credit")
-                       if "lender" in str(e.get("description", "")).lower()
-                       or "loan" in str(e.get("description", "")).lower()])
-    banking_items.append({
-        "label": "Loan disbursement detected",
-        "checked": bool(loan_events),
-        "severity": "high" if loan_events else "neutral",
-        "detail": loan_events[0].get("description") if loan_events else None,
-    })
 
-    # K3. Post-disbursement fund usage
-    disb_usage = _events_of_type("post_disbursement_usage")
-    if disb_usage:
-        ev = disb_usage[0]
-        match_flag = ev.get("_amounts_match", False)
-        conc_pct   = ev.get("_concentration_pct", 0)
-        severity = "high" if match_flag else ("high" if conc_pct >= 50 else "medium")
-        banking_items.append({
-            "label": "Post-disbursement fund diversion",
-            "checked": True,
-            "severity": severity,
-            "detail": ev.get("description"),
-        })
-    else:
-        banking_items.append({
-            "label": "Post-disbursement fund diversion",
-            "checked": False,
-            "severity": "neutral",
-            "detail": None,
-        })
-
-    # K4. Salary detected
+# Report-field checks (K4 / K6 / K8 / K16)
+def salary_item(customer_report) -> dict:
+    """K4: salary detected in banking."""
     has_salary = customer_report and customer_report.salary is not None
-    sal_detail = None
+    detail = None
     if has_salary:
         sal = customer_report.salary
-        sal_detail = f"₹{sal.avg_amount:,.0f} avg ({sal.frequency} transactions)"
-    banking_items.append({
-        "label": "Salary detected in banking",
-        "checked": has_salary,
-        "severity": "positive" if has_salary else "neutral",
-        "detail": sal_detail,
-    })
+        detail = f"₹{sal.avg_amount:,.0f} avg ({sal.frequency} transactions)"
+    return make_item("Salary detected in banking", has_salary, "positive" if has_salary else "neutral", detail)
 
-    # K5. Big debits within 3 days of salary credit (≥40% of salary)
-    # Reuses self_transfer_post_salary detector (window=3d, threshold=40%).
-    self_transfers = _events_of_type("self_transfer_post_salary")
-    st_detail = None
-    if self_transfers:
-        top = max(self_transfers, key=lambda e: float(e.get("amount") or 0))
-        st_detail = top.get("description")
-    banking_items.append({
-        "label": "Big debits after salary credit (≥40% within 3d)",
-        "checked": bool(self_transfers),
-        "severity": "medium" if self_transfers else "neutral",
-        "detail": st_detail,
-    })
 
-    # K5b. Circular entry — mirror credit/debit with same counterparty (round_trip events).
-    round_trips = _events_of_type("round_trip")
-    rt_detail = None
-    if round_trips:
-        top = max(round_trips, key=lambda e: float(e.get("amount") or 0))
-        rt_detail = top.get("description")
-    banking_items.append({
-        "label": "Circular entry (mirror credit/debit)",
-        "checked": bool(round_trips),
-        "severity": "high" if round_trips else "positive",
-        "detail": rt_detail,
-    })
-
-    # K5c. Counterparties present on both credit and debit sides.
-    both_side_detail = None
-    both_side_hit = False
-    try:
-        if customer_report:
-            from data.loader import get_transactions_df
-            from utils.narration_utils import extract_recipient_name
-            tdf = get_transactions_df()
-            cdf = tdf[tdf["cust_id"] == customer_report.meta.customer_id].copy()
-            if not cdf.empty:
-                cdf["_who"] = cdf["tran_partclr"].astype(str).map(
-                    lambda s: (extract_recipient_name(s) or "").strip().upper()
-                )
-                cdf = cdf[cdf["_who"] != ""]
-                cdf["_amt"] = cdf["tran_amt_in_ac"].astype(float).abs()
-                cr = cdf[cdf["dr_cr_indctor"] == "C"]
-                dr = cdf[cdf["dr_cr_indctor"] == "D"]
-                shared = set(cr["_who"]).intersection(set(dr["_who"]))
-                if shared:
-                    both_side_hit = True
-                    sub = cdf[cdf["_who"].isin(shared)]
-                    top_party = (
-                        sub.groupby("_who")["_amt"].sum().sort_values(ascending=False).index[0]
-                    )
-                    cr_amt = float(cr.loc[cr["_who"] == top_party, "_amt"].sum())
-                    dr_amt = float(dr.loc[dr["_who"] == top_party, "_amt"].sum())
-                    both_side_detail = (
-                        f"{len(shared)} counterparties on both sides — top: "
-                        f"{top_party[:40]} (₹{cr_amt:,.0f} in / ₹{dr_amt:,.0f} out)"
-                    )
-    except Exception:
-        pass
-    banking_items.append({
-        "label": "Counterparties on both credit & debit",
-        "checked": both_side_hit,
-        "severity": "medium" if both_side_hit else "neutral",
-        "detail": both_side_detail,
-    })
-
-    # K6. EMI obligations
+def emi_item(customer_report) -> dict:
+    """K6: EMI obligations present."""
     has_emis = customer_report and customer_report.emis and len(customer_report.emis) > 0
-    emi_detail = None
+    detail = None
     if has_emis:
         total_emi = sum(e.amount for e in customer_report.emis)
-        emi_detail = f"₹{total_emi:,.0f} total across {len(customer_report.emis)} lender(s)"
-    banking_items.append({
-        "label": "EMI obligations present",
-        "checked": bool(has_emis),
-        "severity": "medium" if has_emis else "neutral",
-        "detail": emi_detail,
-    })
+        detail = f"₹{total_emi:,.0f} total across {len(customer_report.emis)} lender(s)"
+    return make_item("EMI obligations present", bool(has_emis), "medium" if has_emis else "neutral", detail)
 
-    # K7. NACH mandate / SPLN EMI (paired with EMI above)
-    mandate_emis = _events_of_type("mandate_emi")
-    banking_items.append({
-        "label": "NACH mandate EMI detected",
-        "checked": bool(mandate_emis),
-        "severity": "medium" if mandate_emis else "neutral",
-        "detail": mandate_emis[0].get("description") if mandate_emis else None,
-    })
 
-    # K8. Rent payments
+def rent_item(customer_report) -> dict:
+    """K8: rent payments present."""
     has_rent = customer_report and customer_report.rent is not None
-    banking_items.append({
-        "label": "Rent payments present",
-        "checked": bool(has_rent),
-        "severity": "neutral",
-        "detail": f"₹{customer_report.rent.amount:,.0f} ({customer_report.rent.frequency} transactions)" if has_rent else None,
-    })
+    detail = (f"₹{customer_report.rent.amount:,.0f} ({customer_report.rent.frequency} transactions)"
+              if has_rent else None)
+    return make_item("Rent payments present", bool(has_rent), "neutral", detail)
 
-    # K9. Credit card bill payments
-    cc_payments = _events_of_type("cc_payment")
-    banking_items.append({
-        "label": "Credit card bill payments",
-        "checked": bool(cc_payments),
-        "severity": "positive" if cc_payments else "neutral",
-        "detail": cc_payments[0].get("description") if cc_payments else None,
-    })
 
-    # K11. Land payments
-    land_events = _events_of_type("land_payment")
-    banking_items.append({
-        "label": "Land purchase payments",
-        "checked": bool(land_events),
-        "severity": "medium" if land_events else "neutral",
-        "detail": land_events[0].get("description") if land_events else None,
-    })
+def emerging_merchants_item(customer_report):
+    """K16: merchants new in recent months (absent before). None if none."""
+    if not (customer_report and customer_report.merchant_features):
+        return None
+    em = customer_report.merchant_features.get("emerging_merchants", {})
+    em_list = em.get("emerging_merchants", [])
+    if not em_list:
+        return None
+    names = ", ".join(e["name"] for e in em_list[:3])
+    return make_item("Emerging merchants detected", True, "medium", f"{len(em_list)} new: {names}")
 
-    # K12. ATM withdrawals — trend and location
-    atm_events = _events_of_type("atm_withdrawal")
-    if atm_events:
-        ev = atm_events[0]
-        is_elevated = ev.get("_is_elevated", False)
-        top = ev.get("_top_address")
-        detail = ev.get("description", "")
-        if top:
-            detail += f" | Most frequent ATM: {top['address']} ({top['count']} times)"
-        banking_items.append({
-            "label": "ATM withdrawals elevated",
-            "checked": is_elevated,
-            "severity": "medium" if is_elevated else "neutral",
-            "detail": detail,
-        })
-    else:
-        banking_items.append({
-            "label": "ATM withdrawals elevated",
-            "checked": False,
-            "severity": "neutral",
-            "detail": None,
-        })
+# Event-derived checks with custom logic (K3 / K12)
 
-    # K13–K15. Transaction-level checks (require raw DataFrame)
-    try:
-        from data.loader import get_transactions_df
-        from utils.narration_utils import extract_recipient_name, clean_narration
+def disbursement_severity(event) -> str:
+    """K3 severity: 'high' when diverted amounts match the disbursal or the top
+    recipients concentrate at/above the configured share, else 'medium'."""
+    if event.get("_amounts_match", False):  return "high"
+    conc_pct = event.get("_concentration_pct", 0)
+    return "high" if conc_pct >= T.POST_DISB_CONCENTRATION_PCT * 100 else "medium"
 
-        cust_id = customer_report.meta.customer_id if customer_report else None
-        if cust_id is not None:
-            df = get_transactions_df()
-            cdf = df[df["cust_id"] == cust_id].copy()
 
-            if not cdf.empty:
-                narrations = cdf["tran_partclr"].fillna("")
-                amounts = cdf["tran_amt_in_ac"].fillna(0).astype(float)
-                directions = cdf["dr_cr_indctor"].fillna("")
+def post_disbursement_item(events) -> dict:
+    """K3: post-disbursement fund diversion."""
+    disb = events_of_type(events, "post_disbursement_usage")
+    if not disb: return make_item("Post-disbursement fund diversion", False, "neutral", None)
+    ev = disb[0]
+    return make_item("Post-disbursement fund diversion", True, disbursement_severity(ev), ev.get("description"))
 
-                # --- K13. Credits / debits above 95th percentile ---------------
-                outlier_parts = []
-                for direction, label in [("C", "credit"), ("D", "debit")]:
-                    mask = directions == direction
-                    dir_amounts = amounts[mask]
-                    if len(dir_amounts) < 5:
-                        continue
-                    p95 = np.percentile(dir_amounts, 95)
-                    outliers = cdf[mask & (amounts > p95)]
-                    for _, row in outliers.iterrows():
-                        narr = str(row.get("tran_partclr", ""))
-                        merchant = extract_recipient_name(narr) or clean_narration(narr) or "Unknown"
-                        amt = float(row.get("tran_amt_in_ac", 0))
-                        outlier_parts.append(f"{merchant}: ₹{amt:,.0f} ({label})")
 
-                has_outliers = bool(outlier_parts)
-                banking_items.append({
-                    "label": "Transactions above 95th percentile",
-                    "checked": has_outliers,
-                    "severity": "medium" if has_outliers else "neutral",
-                    "detail": "; ".join(outlier_parts[:5]) if has_outliers else None,
-                })
+def atm_withdrawal_item(events) -> dict:
+    """K12: ATM withdrawal trend + most-frequent location."""
+    label = "ATM withdrawals elevated"
+    atm = events_of_type(events, "atm_withdrawal")
+    if not atm: return make_item(label, False, "neutral", None)
+    ev = atm[0]
+    is_elevated = ev.get("_is_elevated", False)
+    top = ev.get("_top_address")
+    detail = ev.get("description", "")
+    if top: detail += f" | Most frequent ATM: {top['address']} ({top['count']} times)"
+    return make_item(label, is_elevated, "medium" if is_elevated else "neutral", detail)
 
-                # --- K14. Automated (NACH / mandate) debit & credit count ------
-                narr_upper = narrations.str.upper()
-                auto_mask = narr_upper.str.contains("NACH|MANDATE", na=False, regex=True)
-                auto_debits = int((auto_mask & (directions == "D")).sum())
-                auto_credits = int((auto_mask & (directions == "C")).sum())
-                auto_total = auto_debits + auto_credits
-                banking_items.append({
-                    "label": "Automated (NACH/mandate) transactions",
-                    "checked": auto_total > 0,
-                    "severity": "neutral",
-                    "detail": f"{auto_total} total ({auto_debits} debits, {auto_credits} credits)" if auto_total > 0 else None,
-                })
 
-                # --- K15. Payment mode distribution shift -----------------
-                import pandas as pd
+# Transaction-level checks (K5c / K13 / K14 / K15) — operate on the raw frame
+def load_customer_frame(customer_id):
+    """Load and filter the raw transaction rows for one customer (fallback when
+    the caller does not already hold the frame)."""
+    from data.loader import get_transactions_df
+    df = get_transactions_df()
+    return df[df["cust_id"] == customer_id].copy()
 
-                def _infer_mode(row):
-                    """Infer payment mode from tran_type, falling back to narration."""
-                    tt = row.get("tran_type")
-                    if pd.notna(tt) and str(tt).strip():
-                        return str(tt).strip()
-                    nu = str(row.get("tran_partclr", "")).strip().upper()
-                    if "UPI" in nu:
-                        return "UPI"
-                    if "NEFT" in nu:
-                        return "NEFT"
-                    if "IMPS" in nu:
-                        return "IMPS"
-                    if "RTGS" in nu:
-                        return "RTGS"
-                    if "NACH-" in nu:
-                        return "NACH"
-                    if "MB:RECEIVED" in nu or "MB:SENT" in nu:
-                        return "Mobile Banking"
-                    if "IFT-" in nu:
-                        return "IFT"
-                    if nu.startswith("IB:RECEIVED FROM") or "IB:FUND" in nu:
-                        return "Internet Banking"
-                    if nu.startswith("FUND TRF FROM") or nu.startswith("FT FROM") or nu.startswith("FUNDS TRF FROM"):
-                        return "Funds Transfer"
-                    if nu.startswith("ATL/") or nu.startswith("ATW/"):
-                        return "ATM"
-                    if nu.startswith("PG "):
-                        return "Payment Gateway"
-                    if nu.startswith("PCD/"):
-                        return "Card Payment"
-                    if nu.startswith("CLG TO "):
-                        return "Cheque"
-                    return "Other"
 
-                _mode_col = cdf.apply(_infer_mode, axis=1)
-                _dates = pd.to_datetime(cdf["tran_date"], format="%Y-%m-%d", errors="coerce")
-                _periods = _dates.dt.to_period("M")
-                _months_all = sorted(_periods.dropna().unique())
+def both_side_counterparties_item(cust_df) -> dict:
+    """K5c: counterparties appearing on both the credit and debit sides."""
+    label = "Counterparties on both credit & debit"
+    if cust_df is None or cust_df.empty:
+        return make_item(label, False, "neutral", None)
+    from utils.narration_utils import extract_recipient_name
+    cdf = cust_df.copy()
+    cdf["_who"] = cdf["tran_partclr"].astype(str).map(lambda s: (extract_recipient_name(s) or "").strip().upper())
+    cdf = cdf[cdf["_who"] != ""]
+    cdf["_amt"] = cdf["tran_amt_in_ac"].astype(float).abs()
+    cr = cdf[cdf["dr_cr_indctor"] == "C"]
+    dr = cdf[cdf["dr_cr_indctor"] == "D"]
+    shared = set(cr["_who"]).intersection(set(dr["_who"]))
 
-                if len(_months_all) >= T.MODE_SHIFT_MIN_MONTHS:
-                    _recent_set = set(_months_all[-T.MODE_SHIFT_RECENT_MONTHS:])
-                    _is_recent = _periods.map(
-                        lambda m: m in _recent_set if pd.notna(m) else False
-                    )
+    if not shared:
+        return make_item(label, False, "neutral", None)
+    sub = cdf[cdf["_who"].isin(shared)]
+    top_party = sub.groupby("_who")["_amt"].sum().sort_values(ascending=False).index[0]
+    cr_amt = float(cr.loc[cr["_who"] == top_party, "_amt"].sum())
+    dr_amt = float(dr.loc[dr["_who"] == top_party, "_amt"].sum())
+    detail = (
+        f"{len(shared)} counterparties on both sides — top: "
+        f"{top_party[:40]} (₹{cr_amt:,.0f} in / ₹{dr_amt:,.0f} out)"
+    )
+    return make_item(label, True, "medium", detail)
 
-                    _earlier_mask = ~_is_recent & _periods.notna()
-                    _recent_mask = _is_recent
 
-                    if (int(_earlier_mask.sum()) >= T.MODE_SHIFT_MIN_TRANSACTIONS
-                            and int(_recent_mask.sum()) >= T.MODE_SHIFT_MIN_TRANSACTIONS):
+def percentile_outliers_item(cust_df):
+    """K13: credits / debits above the 95th percentile. None if no frame."""
+    if cust_df is None or cust_df.empty:
+        return None
+    from utils.narration_utils import extract_recipient_name, clean_narration
+    amounts = cust_df["tran_amt_in_ac"].fillna(0).astype(float)
+    directions = cust_df["dr_cr_indctor"].fillna("")
+    outlier_parts = []
+    for direction, label in [("C", "credit"), ("D", "debit")]:
+        mask = directions == direction
+        dir_amounts = amounts[mask]
+        if len(dir_amounts) < 5:
+            continue
+        p95 = np.percentile(dir_amounts, 95)
+        outliers = cust_df[mask & (amounts > p95)]
+        for _, row in outliers.iterrows():
+            narr = str(row.get("tran_partclr", ""))
+            merchant = extract_recipient_name(narr) or clean_narration(narr) or "Unknown"
+            amt = float(row.get("tran_amt_in_ac", 0))
+            outlier_parts.append(f"{merchant}: ₹{amt:,.0f} ({label})")
+    has_outliers = bool(outlier_parts)
+    return make_item("Transactions above 95th percentile", has_outliers,
+                     "medium" if has_outliers else "neutral",
+                     "; ".join(outlier_parts[:5]) if has_outliers else None)
 
-                        _e_dist = _mode_col[_earlier_mask].value_counts(normalize=True) * 100
-                        _r_dist = _mode_col[_recent_mask].value_counts(normalize=True) * 100
 
-                        _all_modes = sorted(set(_e_dist.index) | set(_r_dist.index))
-                        _shifts = {}
-                        for _m in _all_modes:
-                            _old = _e_dist.get(_m, 0.0)
-                            _new = _r_dist.get(_m, 0.0)
-                            _delta = _new - _old
-                            if abs(_delta) >= T.MODE_SHIFT_THRESHOLD_PP:
-                                _shifts[_m] = (_old, _new, _delta)
+def automated_txn_item(cust_df):
+    """K14: count of automated (NACH / mandate) debits & credits. None if no frame."""
+    if cust_df is None or cust_df.empty: return None
+    narr_upper = cust_df["tran_partclr"].fillna("").str.upper()
+    directions = cust_df["dr_cr_indctor"].fillna("")
+    auto_mask = narr_upper.str.contains("NACH|MANDATE", na=False, regex=True)
+    auto_debits = int((auto_mask & (directions == "D")).sum())
+    auto_credits = int((auto_mask & (directions == "C")).sum())
+    auto_total = auto_debits + auto_credits
+    detail = (f"{auto_total} total ({auto_debits} debits, {auto_credits} credits)" if auto_total > 0 else None)
+    return make_item("Automated (NACH/mandate) transactions", auto_total > 0, "neutral", detail)
 
-                        if _shifts:
-                            _parts = []
-                            for _m, (_old, _new, _delta) in sorted(
-                                _shifts.items(), key=lambda x: -abs(x[1][2])
-                            ):
-                                _sign = "+" if _delta > 0 else ""
-                                _parts.append(
-                                    f"{_m}: {_old:.0f}% \u2192 {_new:.0f}% ({_sign}{_delta:.0f}pp)"
-                                )
-                            banking_items.append({
-                                "label": "Payment mode distribution shift",
-                                "checked": True,
-                                "severity": "medium",
-                                "detail": "; ".join(_parts),
-                            })
-                        else:
-                            banking_items.append({
-                                "label": "Payment mode distribution shift",
-                                "checked": False,
-                                "severity": "neutral",
-                                "detail": None,
-                            })
-                    else:
-                        banking_items.append({
-                            "label": "Payment mode distribution shift",
-                            "checked": False,
-                            "severity": "neutral",
-                            "detail": None,
-                        })
-                else:
-                    banking_items.append({
-                        "label": "Payment mode distribution shift",
-                        "checked": False,
-                        "severity": "neutral",
-                        "detail": None,
-                    })
-    except Exception:
-        pass  # fail-soft: skip transaction-level checks if data unavailable
 
-    # K16. Emerging merchants (new in recent months, absent before)
-    if customer_report and customer_report.merchant_features:
-        em = customer_report.merchant_features.get("emerging_merchants", {})
-        em_list = em.get("emerging_merchants", [])
-        if em_list:
-            names = ", ".join(e["name"] for e in em_list[:3])
-            detail = f"{len(em_list)} new: {names}"
-            banking_items.append({"label": "Emerging merchants detected", "checked": True,
-                                   "severity": "medium", "detail": detail})
+def infer_payment_mode(row) -> str:
+    """Standardised payment mode (transaction "type") for one row: prefer the
+    explicit ``tran_type`` column, else infer from the narration prefix."""
+    tt = row.get("tran_type")
+    if pd.notna(tt) and str(tt).strip():
+        return str(tt).strip()
+    nu = str(row.get("tran_partclr", "")).strip().upper()
+    if "UPI" in nu: return "UPI"
+    if "NEFT" in nu: return "NEFT"
+    if "IMPS" in nu: return "IMPS"
+    if "RTGS" in nu: return "RTGS"
+    if "NACH-" in nu: return "NACH"
+    if "MB:RECEIVED" in nu or "MB:SENT" in nu: return "Mobile Banking"
+    if "IFT-" in nu: return "IFT"
+    if nu.startswith("IB:RECEIVED FROM") or "IB:FUND" in nu: return "Internet Banking"
+    if nu.startswith("FUND TRF FROM") or nu.startswith("FT FROM") or nu.startswith("FUNDS TRF FROM"): return "Funds Transfer"
+    if nu.startswith("ATL/") or nu.startswith("ATW/"): return "ATM"
+    if nu.startswith("PG "): return "Payment Gateway"
+    if nu.startswith("PCD/"): return "Card Payment"
+    if nu.startswith("CLG TO "): return "Cheque"
+    return "Other"
 
-    return {"banking": banking_items}
+
+def mode_shift_item(cust_df):
+    """K15: shift in payment-mode distribution (recent vs earlier). None if no frame."""
+    label = "Payment mode distribution shift"
+    if cust_df is None or cust_df.empty:
+        return None
+
+    mode_col = cust_df.apply(infer_payment_mode, axis=1)
+    dates = pd.to_datetime(cust_df["tran_date"], format="%Y-%m-%d", errors="coerce")
+    periods = dates.dt.to_period("M")
+    months_all = sorted(periods.dropna().unique())
+    if len(months_all) < T.MODE_SHIFT_MIN_MONTHS:
+        return make_item(label, False, "neutral", None)
+
+    recent_set = set(months_all[-T.MODE_SHIFT_RECENT_MONTHS:])
+    is_recent = periods.map(lambda m: m in recent_set if pd.notna(m) else False)
+    earlier_mask = ~is_recent & periods.notna()
+    recent_mask = is_recent
+    if not (int(earlier_mask.sum()) >= T.MODE_SHIFT_MIN_TRANSACTIONS
+            and int(recent_mask.sum()) >= T.MODE_SHIFT_MIN_TRANSACTIONS):
+        return make_item(label, False, "neutral", None)
+
+    e_dist = mode_col[earlier_mask].value_counts(normalize=True) * 100
+    r_dist = mode_col[recent_mask].value_counts(normalize=True) * 100
+    all_modes = sorted(set(e_dist.index) | set(r_dist.index))
+    shifts = {}
+    for m in all_modes:
+        old = e_dist.get(m, 0.0)
+        new = r_dist.get(m, 0.0)
+        delta = new - old
+        if abs(delta) >= T.MODE_SHIFT_THRESHOLD_PP:
+            shifts[m] = (old, new, delta)
+    if not shifts:
+        return make_item(label, False, "neutral", None)
+
+    parts = []
+    for m, (old, new, delta) in sorted(shifts.items(), key=lambda x: -abs(x[1][2])):
+        sign = "+" if delta > 0 else ""
+        parts.append(f"{m}: {old:.0f}% → {new:.0f}% ({sign}{delta:.0f}pp)")
+    return make_item(label, True, "medium", "; ".join(parts))

@@ -2,6 +2,25 @@
 Utility functions used across the project.
 """
 
+import logging
+
+_logger = logging.getLogger(__name__)
+
+
+def safe_call(fn, *args, default=None, **kwargs):
+    """Run ``fn(*args, **kwargs)``; on any exception log a warning and return
+    ``default``.
+
+    Central fail-soft wrapper so each report section degrades independently
+    instead of aborting the whole build. The failing callable is identified by
+    its ``__name__``, so no per-module log prefix is needed.
+    """
+    try:
+        return fn(*args, **kwargs)
+    except Exception as exc:  # noqa: BLE001
+        _logger.warning("%s failed: %s", getattr(fn, "__name__", fn), exc)
+        return default
+
 
 def format_inr(amount: float) -> str:
     """Format a number with Indian comma placement (lakhs/crores).
