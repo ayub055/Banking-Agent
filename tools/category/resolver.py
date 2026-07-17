@@ -8,7 +8,7 @@ NO LLM calls - purely deterministic logic.
 
 from typing import Dict, Any, List, Optional
 
-from data.loader import get_transactions_df
+from data.loader import load_transactions
 from config.category_loader import (
     get_category_config,
     resolve_category_alias,
@@ -50,7 +50,7 @@ def resolve_category_presence(
     config = get_category_config(category_key)
 
     # Step 3: Get customer transactions
-    df = get_transactions_df()
+    df = load_transactions()
     cust_df = df[df['cust_id'] == customer_id].copy()
 
     if len(cust_df) == 0:

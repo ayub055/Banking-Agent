@@ -9,9 +9,10 @@ import pandas as pd
 from typing import Optional, Dict, Any
 
 from config.settings import (
-    TRANSACTIONS_FILE, TRANSACTIONS_DELIMITER,
-    RG_SAL_FILE, RG_SAL_DELIMITER,
-    RG_INCOME_FILE, RG_INCOME_DELIMITER,
+    CSV_DELIMITER,
+    TRANSACTIONS_FILE,
+    RG_SAL_FILE,
+    RG_INCOME_FILE,
 )
 logger = logging.getLogger(__name__)
 
@@ -70,20 +71,11 @@ def load_transactions(force_reload: bool = False) -> pd.DataFrame:
     global _transactions_df
 
     if _transactions_df is None or force_reload:
-        _transactions_df = pd.read_csv(TRANSACTIONS_FILE, sep=TRANSACTIONS_DELIMITER, index_col=False)
+        _transactions_df = pd.read_csv(TRANSACTIONS_FILE, sep=CSV_DELIMITER, index_col=False)
         _transactions_df = _normalise_categories(_transactions_df)
         print(f"Loaded {len(_transactions_df)} transactions from {TRANSACTIONS_FILE}")
 
     return _transactions_df
-
-
-def get_transactions_df() -> pd.DataFrame:
-    """
-    Get the transactions DataFrame (loads if not already loaded).
-
-    This is the main function tools should use to access data.
-    """
-    return load_transactions()
 
 
 def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
@@ -104,7 +96,7 @@ def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
 
     # --- Primary salary (rg_sal) ---
     try:
-        sal_df = pd.read_csv(RG_SAL_FILE, sep=RG_SAL_DELIMITER, index_col=False)
+        sal_df = pd.read_csv(RG_SAL_FILE, sep=CSV_DELIMITER, index_col=False)
         cust_sal = sal_df[sal_df['crn'] == customer_id].copy()
 
         if len(cust_sal) > 0:
@@ -145,7 +137,7 @@ def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
 
     # --- Total income across all sources (rg_income) ---
     try:
-        inc_df = pd.read_csv(RG_INCOME_FILE, sep=RG_INCOME_DELIMITER, index_col=False)
+        inc_df = pd.read_csv(RG_INCOME_FILE, sep=CSV_DELIMITER, index_col=False)
         cust_inc = inc_df[inc_df['crn'] == customer_id].copy()
 
         if len(cust_inc) > 0:

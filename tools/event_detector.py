@@ -21,7 +21,7 @@ from typing import Optional
 
 import pandas as pd
 
-from data.loader import get_transactions_df, load_rg_salary_data
+from data.loader import load_transactions, load_rg_salary_data
 from utils.narration_utils import extract_recipient_name
 from config.keywords import (
     LENDER_FRAGMENTS,
@@ -1124,10 +1124,10 @@ def detect_events(customer_id: int, rg_salary_data: Optional[dict] = None) -> li
 
     # Load raw transactions
     try:
-        df      = get_transactions_df()
+        df      = load_transactions()
         cust_df = df[df["cust_id"] == customer_id].copy()
     except Exception as exc:
-        logger.warning("event_detector: get_transactions_df failed for %s: %s", customer_id, exc)
+        logger.warning("event_detector: load_transactions failed for %s: %s", customer_id, exc)
         return []
 
     if cust_df.empty:

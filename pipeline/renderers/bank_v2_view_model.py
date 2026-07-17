@@ -88,8 +88,8 @@ def build_bank_v2_context(
 # ---------------------------------------------------------------------------
 
 def _load_cust_df(customer_id: int) -> Optional[pd.DataFrame]:
-    from data.loader import get_transactions_df
-    df = get_transactions_df()
+    from data.loader import load_transactions
+    df = load_transactions()
     cust = df[df["cust_id"] == customer_id].copy()
     if cust.empty:
         return None

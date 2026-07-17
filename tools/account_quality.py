@@ -17,7 +17,7 @@ from typing import Optional
 
 import pandas as pd
 
-from data.loader import get_transactions_df, load_rg_salary_data
+from data.loader import load_transactions, load_rg_salary_data
 import config.thresholds as T
 from tools.category.registry import categories_with_role
 from tools.rules import is_self_transfer, is_atm_debit
@@ -244,10 +244,10 @@ def compute_account_quality(customer_id: int, customer_report=None,
 
     # --- Load raw transactions ---
     try:
-        df      = get_transactions_df()
+        df      = load_transactions()
         cust_df = df[df["cust_id"] == customer_id].copy()
     except Exception as exc:
-        logger.warning("account_quality: get_transactions_df failed for %s: %s", customer_id, exc)
+        logger.warning("account_quality: load_transactions failed for %s: %s", customer_id, exc)
         return _empty_result()
 
     if cust_df.empty:

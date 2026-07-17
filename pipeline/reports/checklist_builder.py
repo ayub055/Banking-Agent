@@ -166,8 +166,8 @@ def atm_withdrawal_item(events) -> dict:
 def load_customer_frame(customer_id):
     """Load and filter the raw transaction rows for one customer (fallback when
     the caller does not already hold the frame)."""
-    from data.loader import get_transactions_df
-    df = get_transactions_df()
+    from data.loader import load_transactions
+    df = load_transactions()
     return df[df["cust_id"] == customer_id].copy()
 
 

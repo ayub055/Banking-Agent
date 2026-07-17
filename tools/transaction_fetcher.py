@@ -12,7 +12,7 @@ import math
 from typing import List, Dict, Any, Optional
 from collections import defaultdict
 
-from data.loader import get_transactions_df
+from data.loader import load_transactions
 from schemas.transaction_summary import (
     SalarySummary,
     HighFrequencyTransaction,
@@ -45,7 +45,7 @@ def fetch_transaction_summary(customer_id: int) -> TransactionSummary:
     Args: customer_id: Customer identifier
     Returns: TransactionSummary with salary info and high-frequency transaction groups
     """
-    df = get_transactions_df()
+    df = load_transactions()
     cust_df = df[df['cust_id'] == customer_id]
 
     if len(cust_df) == 0:

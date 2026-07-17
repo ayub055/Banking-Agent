@@ -8,7 +8,7 @@ purely deterministic data aggregation.
 from datetime import datetime
 from typing import Optional, Tuple
 
-from data.loader import get_transactions_df
+from data.loader import load_transactions
 from tools.analytics import (
     get_spending_by_category,
     get_cash_flow,
@@ -48,7 +48,7 @@ def build_customer_report(customer_id: int, months: int = 6,
         CustomerReport with all available sections populated
     """
     # 1. Get transaction count for meta
-    df = get_transactions_df()
+    df = load_transactions()
     cust_df = df[df['cust_id'] == customer_id]
     transaction_count = len(cust_df)
 

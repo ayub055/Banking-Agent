@@ -732,7 +732,7 @@ def compute_all_merchant_features(
 ) -> Dict[str, Any]:
     """Compute all merchant features for a customer.
 
-    Loads transactions via get_transactions_df(), runs the fuzzy merchant
+    Loads transactions via load_transactions(), runs the fuzzy merchant
     grouping ONCE per direction shape (all-directions and debit-only), then
     passes the precomputed groups into each feature function instead of
     re-grouping 13 times.
@@ -744,9 +744,9 @@ def compute_all_merchant_features(
     Returns:
         Dict with keys for each feature category.
     """
-    from data.loader import get_transactions_df
+    from data.loader import load_transactions
 
-    df = get_transactions_df()
+    df = load_transactions()
     cust_df = df[df["cust_id"] == customer_id]
     if len(cust_df) == 0:
         return {}

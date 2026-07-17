@@ -46,14 +46,14 @@ LLM_SEED: int = 42               # Reproducibility seed
 # DATA PATHS — Change these when switching to new data files
 # =============================================================================
 
+# Delimiter for all input CSVs (tab-separated)
+CSV_DELIMITER = "\t"
+
 # Transaction data
-TRANSACTIONS_FILE = os.path.join(_PROJECT_ROOT, "data", "rgs.csv")
-TRANSACTIONS_DELIMITER = "\t"
+TRANSACTIONS_FILE = os.path.join(_PROJECT_ROOT, "data/xn_d1.csv")
 
 # Internal salary algorithm outputs
-RG_SAL_FILE = os.path.join(_PROJECT_ROOT, "rg_sal_strings.csv")
-RG_SAL_DELIMITER = "\t"
-RG_INCOME_FILE = os.path.join(_PROJECT_ROOT, "rg_income_strings.csv")
-RG_INCOME_DELIMITER = "\t"
+RG_SAL_FILE = os.path.join(_PROJECT_ROOT, "data/rg_sal_strings.csv")
+RG_INCOME_FILE = os.path.join(_PROJECT_ROOT, "data/rg_income_strings.csv")
 
 LOG_DIR = "logs"

@@ -7,12 +7,12 @@ Only the functions consumed by the report pipeline live here:
 """
 
 from typing import Dict, Any
-from data.loader import get_transactions_df
+from data.loader import load_transactions
 import pandas as pd
 
 
 def get_spending_by_category(customer_id: int, category: str = None) -> Dict[str, Any]:
-    df = get_transactions_df()
+    df = load_transactions()
     if category:
         filtered = df[
             (df['cust_id'] == customer_id) &
@@ -46,7 +46,7 @@ def get_spending_by_category(customer_id: int, category: str = None) -> Dict[str
 
 def get_balance_trend(customer_id: int) -> Dict[str, Any]:
     """Calculate running balance over time for a customer."""
-    df = get_transactions_df()
+    df = load_transactions()
     cust_df = df[df['cust_id'] == customer_id].copy()
 
     if len(cust_df) == 0:
@@ -101,7 +101,7 @@ def get_balance_trend(customer_id: int) -> Dict[str, Any]:
 
 def get_cash_flow(customer_id: int) -> Dict[str, Any]:
     """Get monthly cash flow summary (inflows vs outflows)."""
-    df = get_transactions_df()
+    df = load_transactions()
     cust_df = df[df['cust_id'] == customer_id].copy()
 
     if len(cust_df) == 0:

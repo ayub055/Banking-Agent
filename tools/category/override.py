@@ -26,7 +26,7 @@ from typing import Any
 
 import pandas as pd
 
-from config.settings import TRANSACTIONS_FILE, TRANSACTIONS_DELIMITER
+from config.settings import TRANSACTIONS_FILE, CSV_DELIMITER
 from tools.category.registry import l1_of, l2_canonical
 
 logger = logging.getLogger(__name__)
@@ -45,7 +45,7 @@ def apply_customer_edits(customer_id: int, edits: list[dict[str, Any]]) -> int:
     if not edits:
         return 0
 
-    df = pd.read_csv(TRANSACTIONS_FILE, sep=TRANSACTIONS_DELIMITER, index_col=False, dtype=str)
+    df = pd.read_csv(TRANSACTIONS_FILE, sep=CSV_DELIMITER, index_col=False, dtype=str)
 
     # Coerce only the columns we need to compare numerically.
     amt_numeric = pd.to_numeric(df["tran_amt_in_ac"], errors="coerce")
@@ -99,7 +99,7 @@ def apply_customer_edits(customer_id: int, edits: list[dict[str, Any]]) -> int:
     fd, tmp_path = tempfile.mkstemp(prefix=".rgs_", suffix=".csv.tmp", dir=target_dir)
     os.close(fd)
     try:
-        df.to_csv(tmp_path, sep=TRANSACTIONS_DELIMITER, index=False)
+        df.to_csv(tmp_path, sep=CSV_DELIMITER, index=False)
         os.replace(tmp_path, TRANSACTIONS_FILE)
     except Exception:
         if os.path.exists(tmp_path):
