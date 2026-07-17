@@ -3,6 +3,7 @@ Utility functions used across the project.
 """
 
 import logging
+from typing import Union
 
 _logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ def format_inr(amount: float) -> str:
     return f"-{result}" if is_negative else result
 
 
-def mask_customer_id(customer_id: int | str) -> str:
+def mask_customer_id(customer_id: Union[int, str]) -> str:
     """
     Mask customer ID to show only last 4 digits.
 

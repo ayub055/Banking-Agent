@@ -20,11 +20,8 @@ from config.prompts import CUSTOMER_REVIEW_PROMPT
 
 logger = logging.getLogger(__name__)
 
-# Default model for summary generation — dedicated reasoning model
-_SUMMARY_MODEL = SUMMARY_MODEL
 
-
-def create_summary_chain(model_name: str = _SUMMARY_MODEL):
+def create_summary_chain(model_name: str = SUMMARY_MODEL):
     """
     Create an LCEL chain for generating customer reviews.
 
@@ -35,17 +32,15 @@ def create_summary_chain(model_name: str = _SUMMARY_MODEL):
         LCEL chain that takes {customer_id, data_summary} and returns AIMessage
     """
     prompt = ChatPromptTemplate.from_template(CUSTOMER_REVIEW_PROMPT)
-    reasoning = True if is_thinking_model(model_name) else None
+    reasoning = is_thinking_model(model_name) or None
     llm = create_chat_model(model_name, reasoning=reasoning)
 
     return prompt | llm
 
 
-def generate_customer_review(
-    report: CustomerReport,
-    rg_salary_data: dict = None,
-    model_name: str = _SUMMARY_MODEL,
-) -> Optional[str]:
+def generate_customer_review(report: CustomerReport,
+                             rg_salary_data: dict = None,
+                             model_name: str = SUMMARY_MODEL) -> Optional[str]:
     """
     Generate an LLM-based customer review from populated report sections.
 
@@ -57,31 +52,22 @@ def generate_customer_review(
 
     Args:
         report: CustomerReport with populated sections
-        rg_salary_data: Optional RG salary algorithm output — used to prefer
-                        the authoritative salary amount over banking detection.
+        rg_salary_data: Optional RG salary algorithm output — used to prefer the authoritative salary amount over banking detection.
         model_name: Ollama model to use
 
-    Returns:
-        Generated review string, or None if generation fails
+    Returns: Generated review string, or None if generation fails
     """
     # Build data summary from populated sections only
     sections = _build_data_summary(report, rg_salary_data=rg_salary_data)
 
-    if not sections:
-        return None
-
+    if not sections: return None
     data_summary = "\n".join(sections)
 
     try:
         chain = create_summary_chain(model_name)
         t0 = _time.time()
-        raw = chain.invoke({
-            "customer_id": mask_customer_id(report.meta.customer_id),
-            "data_summary": data_summary,
-        })
-        log_token_usage(raw, label="CustomerReview",
-                        customer_id=report.meta.customer_id,
-                        wall_time_s=_time.time() - t0)
+        raw = chain.invoke({"customer_id": mask_customer_id(report.meta.customer_id), "data_summary": data_summary})
+        log_token_usage(raw, label="CustomerReview", customer_id=report.meta.customer_id, wall_time_s=_time.time() - t0) # Log token usage
         review = extract_reasoning(raw, label="CustomerReview", customer_id=report.meta.customer_id)
         return review.strip() if review else None
     except Exception as e:
@@ -92,7 +78,6 @@ def generate_customer_review(
 def _build_data_summary(report: CustomerReport, rg_salary_data: dict = None) -> list:
     """
     Build data summary lines from populated report sections.
-
     Only includes sections that have data - never mentions
     missing sections.
 
@@ -100,31 +85,19 @@ def _build_data_summary(report: CustomerReport, rg_salary_data: dict = None) -> 
         report: CustomerReport to summarize
         rg_salary_data: Optional RG salary algorithm output dict.
 
-    Returns:
-        List of summary strings for each populated section
+    Returns: List of summary strings for each populated section
     """
     sections = []
 
-    # Resolve authoritative salary — rg_sal first (same priority as scorecard)
-    _rg_sal = (rg_salary_data or {}).get("rg_sal") if rg_salary_data else None
-    _auth_salary_amt = (
-        (_rg_sal.get("salary_amount") if _rg_sal else None)
-        or (report.salary.avg_amount if report.salary else None)
-    )
-    _auth_salary_merchant = (
-        (_rg_sal.get("merchant") if _rg_sal else None)
-        or (report.salary.narration.split()[0].title() if report.salary and report.salary.narration else None)
-    )
+    # Resolve authoritative salary - rg_sal first (same priority as scorecard)
+    _rg_sal = rg_salary_data.get("rg_sal") if rg_salary_data else None
+    _auth_salary_amt = (_rg_sal.get("salary_amount") if _rg_sal else None) or (report.salary.avg_amount if report.salary else None)
+    _auth_salary_merchant = (_rg_sal.get("merchant") if _rg_sal else None) or (report.salary.narration.split()[0].title() if report.salary and report.salary.narration else None)
 
     # Category spending (exclude "Others" — merchant analysis covers those)
     if report.category_overview:
-        filtered_cats = {k: v for k, v in report.category_overview.items()
-                         if k.strip().lower() not in ("other", "others")}
-        top_cats = sorted(
-            filtered_cats.items(),
-            key=lambda x: x[1],
-            reverse=True
-        )[:3]
+        filtered_cats = {k: v for k, v in report.category_overview.items() if k.strip().lower() not in ("other", "others")}
+        top_cats = sorted(filtered_cats.items(), key=lambda x: x[1], reverse=True)[:3]
         if top_cats:
             cats_str = ", ".join(f"{k}: {v:,.0f}" for k, v in top_cats)
             sections.append(f"Top spending categories: {cats_str}")
@@ -134,10 +107,7 @@ def _build_data_summary(report: CustomerReport, rg_salary_data: dict = None) -> 
         total_inflow = sum(m.get('inflow', 0) for m in report.monthly_cashflow)
         total_outflow = sum(m.get('outflow', 0) for m in report.monthly_cashflow)
         avg_net = (total_inflow - total_outflow) / max(1, len(report.monthly_cashflow))
-        sections.append(
-            f"Monthly cashflow: Avg net {avg_net:,.0f} INR "
-            f"(Total in: {total_inflow:,.0f}, out: {total_outflow:,.0f})"
-        )
+        sections.append(f"Monthly cashflow: Avg net {avg_net:,.0f} INR " f"(Total in: {total_inflow:,.0f}, out: {total_outflow:,.0f})")
 
     # Salary — use authoritative amount (rg_sal preferred, same as scorecard)
     if _auth_salary_amt:
@@ -150,8 +120,7 @@ def _build_data_summary(report: CustomerReport, rg_salary_data: dict = None) -> 
             freq_str = f" ({report.salary.frequency} transactions)"
         else:
             freq_str = ""
-        sections.append(
-            f"Salary income: {_auth_salary_amt:,.0f} INR average{merchant_str}{freq_str}"
+        sections.append(f"Salary income: {_auth_salary_amt:,.0f} INR average{merchant_str}{freq_str}"
         )
 
     # EMIs — EMIBlock.amount is per-transaction average, not total
@@ -162,10 +131,7 @@ def _build_data_summary(report: CustomerReport, rg_salary_data: dict = None) -> 
 
     # Rent
     if report.rent:
-        sections.append(
-            f"Rent payments: {report.rent.amount:,.0f} INR "
-            f"({report.rent.frequency} transactions)"
-        )
+        sections.append( f"Rent payments: {report.rent.amount:,.0f} INR " f"({report.rent.frequency} transactions)")
 
     # Banking FOIR (computed from available EMI + rent / salary)
     # Note: e.amount and rent.amount are per-transaction averages, which approximates monthly obligation
@@ -293,27 +259,15 @@ def _build_data_summary(report: CustomerReport, rg_salary_data: dict = None) -> 
 
     # Explicitly list absent data types so the LLM does not invent them
     absent = []
-    if not _auth_salary_amt:
-        absent.append("salary income")
-    if not report.emis:
-        absent.append("EMI / loan repayments")
-    if not report.rent:
-        absent.append("rent payments")
-    if not report.bills:
-        absent.append("utility bills")
-    if not report.category_overview:
-        absent.append("spending categories")
-    if not report.monthly_cashflow:
-        absent.append("monthly cashflow")
-    if not report.merchant_features:
-        absent.append("merchant profile")
-    if not report.events:
-        absent.append("transaction events")
-    if absent:
-        sections.append(
-            "DATA NOT AVAILABLE (do NOT invent or assume these): "
-            + ", ".join(absent)
-        )
+    if not _auth_salary_amt: absent.append("salary income")
+    if not report.emis: absent.append("EMI / loan repayments")
+    if not report.rent: absent.append("rent payments")
+    if not report.bills: absent.append("utility bills")
+    if not report.category_overview: absent.append("spending categories")
+    if not report.monthly_cashflow: absent.append("monthly cashflow")
+    if not report.merchant_features: absent.append("merchant profile")
+    if not report.events: absent.append("transaction events")
+    if absent: sections.append("DATA NOT AVAILABLE (do NOT invent or assume these): "+ ", ".join(absent))
 
     return sections
 

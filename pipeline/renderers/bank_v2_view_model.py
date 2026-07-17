@@ -1093,8 +1093,8 @@ def _recurring_window(dates: List[str]) -> dict:
     """Compute mode-day-of-month window, latest date, and next-expected window
     from a list of occurrence date strings.
 
-    Returns a dict with keys: day_range (tuple|None), last_seen (str),
-    next_window (str), median_gap_days (int|None).
+    Returns a dict with keys: day_range (tuple or None), last_seen (str),
+    next_window (str), median_gap_days (int or None).
     """
     out = {"day_range": None, "last_seen": "", "next_window": "", "median_gap_days": None}
     if not dates:

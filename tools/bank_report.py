@@ -23,8 +23,6 @@ def generate_bank_report(
     theme: str = "bank_v2",
 ) -> Tuple[Optional[CustomerReport], str]:
     """Build a banking-only CustomerReport and render it.
-
-    Returns:
         Tuple of (CustomerReport | None, output_path).
     """
     from pipeline.reports.customer_report_builder import build_customer_report
@@ -36,48 +34,27 @@ def generate_bank_report(
     # builder (account quality + event detection) and reused for narration,
     # rendering, and the Excel export below.
     rg_salary_raw = None
-    try:
-        rg_salary_raw = load_rg_salary_data(customer_id)
-    except Exception as e:
-        logger.warning(f"RG salary data unavailable for [{customer_id}]: {e}")
+    try: rg_salary_raw = load_rg_salary_data(customer_id)
+    except Exception as e: logger.warning(f"RG salary data unavailable for [{customer_id}]: {e}")
     rg_salary_data = rg_salary_raw or None
 
     customer_report: Optional[CustomerReport] = None
-    try:
-        customer_report = build_customer_report(customer_id, rg_salary_data=rg_salary_raw)
-    except Exception as e:
-        logger.warning(f"Banking report build failed for {customer_id}: {e}")
+    try: customer_report = build_customer_report(customer_id, rg_salary_data=rg_salary_data)
+    except Exception as e: logger.warning(f"Banking report build failed for {customer_id}: {e}")
 
     if customer_report and customer_report.meta.transaction_count >= 10:
-        try:
-            customer_report.customer_review = generate_customer_review(
-                customer_report, rg_salary_data=rg_salary_data,
-            )
-        except Exception as e:
-            logger.warning(f"customer_review generation failed: {e}")
+        try: customer_report.customer_review = generate_customer_review(customer_report, rg_salary_data=rg_salary_data)
+        except Exception as e: logger.warning(f"customer_review generation failed: {e}")
 
     narrative = customer_report.customer_review if customer_report else None
     output_path = f"reports/customer_{customer_id}_report_v2.html"
-    out = render_combined_report(
-        customer_report,
-        output_path=output_path,
-        combined_summary=narrative,
-        rg_salary_data=rg_salary_data,
-        theme=theme,
-    )
+    out = render_combined_report(customer_report, output_path=output_path, combined_summary=narrative, rg_salary_data=rg_salary_data, theme=theme)
 
     try:
         from tools.excel_exporter import build_excel_row, export_row_to_excel
-        row = build_excel_row(
-            customer_id=customer_id,
-            customer_report=customer_report,
-            combined_summary=None,
-            report_path=out,
-            rg_salary_data=rg_salary_data,
-        )
+        row = build_excel_row(customer_id=customer_id, customer_report=customer_report, combined_summary=None, report_path=out, rg_salary_data=rg_salary_data)
         excel_path = os.path.join(_EXCEL_OUTPUT_DIR, f"{customer_id}.xlsx")
         export_row_to_excel(row, excel_path)
-    except Exception as exc:
-        logger.warning("Excel export failed for %s: %s", customer_id, exc)
+    except Exception as e: logger.warning(f"Excel export failed for [{customer_id}]: {e}")
 
     return customer_report, out

@@ -1,17 +1,17 @@
 """Banking report renderer — turns a CustomerReport into the bank_v2 HTML report.
-
 NO LLM calls — NO data manipulation — just rendering (plus the deterministic
 checklist computation consumed by the bank_v2 view model).
 """
 
+import logging
 from pathlib import Path
 from typing import Optional
-
 from jinja2 import Environment, FileSystemLoader
-
 
 from schemas.customer_report import CustomerReport
 from utils.helpers import mask_customer_id, format_inr
+
+logger = logging.getLogger(__name__)
 
 
 def render_combined_report(
@@ -25,13 +25,11 @@ def render_combined_report(
 
     Args:
         customer_report: Fully populated CustomerReport, or None if unavailable.
-        output_path: Desired output path; a legacy ``.pdf`` suffix is normalised
-            to ``.html``. Defaults to reports/combined_{customer_id}_report.html.
+        output_path: Desired output path; a legacy ``.pdf`` suffix is normalised  to ``.html``. Defaults to reports/combined_{customer_id}_report.html.
         combined_summary: LLM-generated executive summary.
         rg_salary_data: Optional internal salary algorithm data dict.
 
-    Returns:
-        Path where the HTML was saved.
+    Returns: Path where the HTML was saved.
     """
     if output_path is None:
         cid = customer_report.meta.customer_id if customer_report else "unknown"
@@ -41,12 +39,8 @@ def render_combined_report(
     output_file = Path(html_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    html_content = render_combined_report_html(
-        customer_report, combined_summary=combined_summary,
-        rg_salary_data=rg_salary_data, theme=theme,
-    )
-    with open(html_path, "w", encoding="utf-8") as f:
-        f.write(html_content)
+    html_content = render_combined_report_html(customer_report, combined_summary=combined_summary, rg_salary_data=rg_salary_data, theme=theme,)
+    with open(html_path, "w", encoding="utf-8") as f: f.write(html_content)
 
     return html_path
 
@@ -58,36 +52,23 @@ def render_combined_report_html(
     theme: str = "bank_v2",
 ) -> str:
     """Render the banking HTML report using the canonical bank_v2 template.
-
-    Args:
         theme: Retained for call-site compatibility; only bank_v2 is supported.
-
-    Returns:
-        HTML string.
+    Returns: HTML string.
     """
     template_dir = Path(__file__).parent.parent.parent / "templates"
-    template_dir.mkdir(parents=True, exist_ok=True)
 
-    env = Environment(
-        loader=FileSystemLoader(str(template_dir)),
-        autoescape=True,
-    )
+    env = Environment(loader=FileSystemLoader(str(template_dir)),autoescape=True,)
     env.filters["mask_id"] = mask_customer_id
     env.filters["inr"] = format_inr
 
     from tools.scorecard import compute_scorecard
     scorecard = compute_scorecard(customer_report=customer_report, rg_salary_data=rg_salary_data)
 
-    bank_v2_ctx = None
     try:
         from pipeline.renderers.bank_v2_view_model import build_bank_v2_context
-        bank_v2_ctx = build_bank_v2_context(
-            customer_report=customer_report,
-            scorecard=scorecard,
-            rg_salary_data=rg_salary_data,
-            combined_summary=combined_summary,
-        )
-    except Exception:
+        bank_v2_ctx = build_bank_v2_context(customer_report=customer_report, scorecard=scorecard, rg_salary_data=rg_salary_data, combined_summary=combined_summary,)
+    except Exception as e:
+        logger.warning("bank_v2 view model build failed; rendering empty context: %s", e)
         bank_v2_ctx = None
 
     template = env.get_template("bank_report_v2.html")
