@@ -12,7 +12,6 @@ from config.settings import (
     CSV_DELIMITER,
     TRANSACTIONS_FILE,
     RG_SAL_FILE,
-    RG_INCOME_FILE,
 )
 logger = logging.getLogger(__name__)
 
@@ -78,19 +77,44 @@ def load_transactions(force_reload: bool = False) -> pd.DataFrame:
     return _transactions_df
 
 
+def _compute_rg_income(customer_id: int) -> Optional[pd.DataFrame]:
+    """Run the RG income extractor live over the loaded transactions for one
+    customer and return its aggregated per-source output.
+
+    Replaces the former read of the precomputed rg_income_strings.csv. The
+    extractor is imported lazily to avoid the tools <-> data.loader circular
+    import (same pattern as _normalise_categories). The transaction-level
+    "strings" behind each source are logged for now; nothing consumes them yet.
+    """
+    from tools.salary_extractors.rg_income import RGIncomeExtractor
+
+    ext = RGIncomeExtractor()
+    try:
+        out = ext.extract(df=load_transactions(), cust_id_filter=[str(customer_id)])
+        if out is not None and len(out) > 0:
+            logger.info(
+                "RG income strings for %s:\n%s",
+                customer_id, ext.get_income_strings().to_string(),
+            )
+        return out
+    finally:
+        ext.close()
+
+
 def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
     """
     Load internal salary algorithm outputs for a customer.
 
-    Reads rg_sal_strings.csv (primary salary) and rg_income_strings.csv
-    (multi-source total income) and returns structured data for template rendering.
+    Reads rg_sal_strings.csv for the primary salary, and computes the
+    multi-source total income (rg_income) live from the transactions via the
+    RG income extractor. Returns structured data for template rendering.
 
     Args:
         customer_id: Customer identifier (CRN)
 
     Returns:
         Dict with optional 'rg_sal' and 'rg_income' sub-dicts.
-        Returns {} if both files are missing or customer has no data.
+        Returns {} if the customer has no salary/income data.
     """
     result: Dict[str, Any] = {}
 
@@ -136,42 +160,29 @@ def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
         pass
 
     # --- Total income across all sources (rg_income) ---
+    # Computed live from the transactions by the RG income extractor; there is
+    # no precomputed file to read anymore.
     try:
-        inc_df = pd.read_csv(RG_INCOME_FILE, sep=CSV_DELIMITER, index_col=False)
-        cust_inc = inc_df[inc_df['crn'] == customer_id].copy()
+        inc_out = _compute_rg_income(customer_id)
 
-        if len(cust_inc) > 0:
-            total_income = float(cust_inc['rg_income'].iloc[0])
+        if inc_out is not None and len(inc_out) > 0:
+            total_income = float(inc_out['total_income'].iloc[0])
 
-            merchant_groups = (
-                cust_inc.groupby('merchant')
-                .agg(count=('tran_amt_in_ac', 'count'), total=('tran_amt_in_ac', 'sum'))
-                .reset_index()
-                .sort_values('total', ascending=False)
-            )
+            # One income source per cluster; src_income is constant within a
+            # cluster, so keep a single representative row per cluster_id.
+            clusters = inc_out.drop_duplicates(subset='cluster_id')
             sources = []
-            for _, row in merchant_groups.iterrows():
+            for _, row in clusters.iterrows():
                 merchant_name = str(row['merchant']).title()
-                merchant_txns = (
-                    cust_inc[cust_inc['merchant'] == row['merchant']]
-                    .sort_values('tran_date', ascending=False)
-                    .head(3)
-                )
-                txn_list = [
-                    {
-                        'date': str(t['tran_date']),
-                        'narration': str(t['tran_partclr']),
-                        'amount': float(t['tran_amt_in_ac']),
-                    }
-                    for _, t in merchant_txns.iterrows()
-                ]
+                months = [m for m in str(row['all_months']).split(',') if m]
                 sources.append({
                     'merchant': merchant_name,
-                    'count': int(row['count']),
-                    'total': float(row['total']),
-                    'transactions': txn_list,
-                    'showing_limited': int(row['count']) > 3,
+                    'count': len(months),
+                    'total': float(row['src_income']),
+                    'transactions': [],   # per-txn detail is logged for now, not surfaced
+                    'showing_limited': False,
                 })
+            sources.sort(key=lambda s: s['total'], reverse=True)
             source_count = len(sources)
 
             rg_sal_amount = result.get('rg_sal', {}).get('salary_amount')
@@ -202,9 +213,7 @@ def load_rg_salary_data(customer_id: int) -> Dict[str, Any]:
                 'sources': sources,
                 'observation': observation,
             }
-    except FileNotFoundError:
-        pass
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"RG income computation failed for [{customer_id}]: {e}")
 
     return result
