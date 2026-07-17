@@ -34,7 +34,6 @@ def build_bank_v2_context(
     combined_summary: Optional[str] = None,
 ) -> Dict[str, Any]:
     """Build the v2 banking-report Jinja context.
-
     Returns a dict with one key per template section. Sections that cannot be
     derived are set to ``None`` so the template can hide them.
     """
@@ -57,8 +56,7 @@ def build_bank_v2_context(
         "transactions": None,
     }
 
-    if customer_report is None:
-        return ctx
+    if customer_report is None: return ctx
 
     cust_df = _safe(_load_cust_df, customer_report.meta.customer_id)
     balance_info = _safe(_load_balance_info, customer_report.meta.customer_id)
@@ -91,8 +89,7 @@ def _load_cust_df(customer_id: int) -> Optional[pd.DataFrame]:
     from data.loader import load_transactions
     df = load_transactions()
     cust = df[df["cust_id"] == customer_id].copy()
-    if cust.empty:
-        return None
+    if cust.empty: return None
     cust["tran_date"] = pd.to_datetime(cust["tran_date"], errors="coerce")
     cust = cust.dropna(subset=["tran_date"])
     return cust if not cust.empty else None
@@ -109,32 +106,19 @@ def _load_balance_info(customer_id: int) -> Optional[dict]:
 
 def _build_header(report: CustomerReport) -> dict:
     m = report.meta
-    return {
-        "customer_id": m.customer_id,
-        "name": m.prty_name or "",
-        "period": m.analysis_period,
-        "txn_count": m.transaction_count,
-    }
+    return { "customer_id": m.customer_id, "name": m.prty_name or "", "period": m.analysis_period, "txn_count": m.transaction_count,}
 
 
 def _build_verdict(scorecard: Optional[dict]) -> dict:
-    if not scorecard:
-        return {"label": "REVIEW", "rag": "amber"}
-    return {
-        "label": scorecard.get("verdict", "REVIEW"),
-        "rag": scorecard.get("verdict_rag", "amber"),
-    }
+    if not scorecard: return {"label": "REVIEW", "rag": "amber"}
+    return {"label": scorecard.get("verdict", "REVIEW"),  "rag": scorecard.get("verdict_rag", "amber"),}
 
 
 # ---------------------------------------------------------------------------
 # KPI strip
 # ---------------------------------------------------------------------------
 
-def _build_kpis(
-    report: CustomerReport,
-    scorecard: Optional[dict],
-    balance_info: Optional[dict],
-) -> dict:
+def _build_kpis(report: CustomerReport, scorecard: Optional[dict], balance_info: Optional[dict],) -> dict:
     return {
         "salary": _kpi_salary(report),
         "balance": _kpi_balance(report, balance_info),
@@ -146,17 +130,14 @@ def _build_kpis(
 
 def _kpi_salary(report: CustomerReport) -> Optional[dict]:
     sal = report.salary
-    if not sal:
-        return None
+    if not sal: return None
     months = _months_from_cashflow(report)
     n_total = len(months) or 6
     n_present = min(sal.frequency, n_total)
     strip = []
     for i, label in enumerate(months or _fallback_months(n_total)):
-        if i < n_present:
-            status = "ok"
-        else:
-            status = "miss"
+        if i < n_present:  status = "ok"
+        else:  status = "miss"
         try:
             dt = pd.to_datetime(label + "-01")
             bubble = dt.strftime("%b")[0]
@@ -175,11 +156,9 @@ def _kpi_salary(report: CustomerReport) -> Optional[dict]:
 
 
 def _kpi_balance(report: CustomerReport, balance_info: Optional[dict]) -> Optional[dict]:
-    if not balance_info:
-        return None
+    if not balance_info:  return None
     monthly = balance_info.get("monthly_balances") or {}
-    if not monthly:
-        return None
+    if not monthly: return None
     series = [float(v) for _, v in sorted(monthly.items())]
     avg = sum(series) / len(series) if series else 0
     return {
@@ -193,8 +172,7 @@ def _kpi_balance(report: CustomerReport, balance_info: Optional[dict]) -> Option
 
 def _kpi_net_cashflow(report: CustomerReport) -> Optional[dict]:
     cf = report.monthly_cashflow
-    if not cf:
-        return None
+    if not cf: return None
     nets = [float(m.get("net", 0)) for m in cf]
     total = sum(nets)
     negatives = [m["month"] for m in cf if float(m.get("net", 0)) < 0]
@@ -209,23 +187,15 @@ def _kpi_net_cashflow(report: CustomerReport) -> Optional[dict]:
 
 def _kpi_emi(report: CustomerReport) -> Optional[dict]:
     emis = report.emis or []
-    if not emis:
-        return None
+    if not emis:  return None
     total = sum(float(e.amount) for e in emis)
     pct_salary = None
     rag = "green"
     if report.salary and report.salary.avg_amount > 0:
         pct_salary = round(total / report.salary.avg_amount * 100, 1)
-        if pct_salary >= 50:
-            rag = "red"
-        elif pct_salary >= 40:
-            rag = "amber"
-    return {
-        "total": round(total, 0),
-        "pct_salary": pct_salary,
-        "count": len(emis),
-        "rag": rag,
-    }
+        if pct_salary >= 50: rag = "red"
+        elif pct_salary >= 40: rag = "amber"
+    return {"total": round(total, 0), "pct_salary": pct_salary, "count": len(emis),  "rag": rag,}
 
 
 def _kpi_stress(scorecard: Optional[dict]) -> dict:
@@ -236,14 +206,9 @@ def _kpi_stress(scorecard: Optional[dict]) -> dict:
     label = {"green": "LOW", "amber": "MODERATE", "red": "HIGH"}.get(rag, "MODERATE")
     drivers: List[str] = []
     drivers.extend(concerns[:2])
-    if not drivers and verify:
-        drivers.extend(verify[:2])
-    return {
-        "score": score,
-        "label": label,
-        "rag": rag,
-        "drivers": drivers,
-    }
+    if not drivers and verify: drivers.extend(verify[:2])
+    
+    return { "score": score, "label": label, "rag": rag, "drivers": drivers,}
 
 
 # ---------------------------------------------------------------------------
@@ -257,8 +222,7 @@ def _build_checks(report: CustomerReport, scorecard: Optional[dict]) -> Optional
     """
     cl = report.checklist or {}
     items = cl.get("banking") or []
-    if not items:
-        return None
+    if not items: return None
 
     # Bucket each label into Risk / FCU / Fraud. Anything not listed defaults
     # to Risk. Labels must match checklist_builder's emitted labels exactly.
@@ -280,20 +244,11 @@ def _build_checks(report: CustomerReport, scorecard: Optional[dict]) -> Optional
         sev = (it.get("severity") or "neutral").lower()
         checked = bool(it.get("checked"))
         # severity → color used by template's .check.{class}
-        if sev in ("high", "red"):
-            color = "red"
-        elif sev in ("medium", "amber"):
-            color = "amber"
-        elif sev in ("positive", "green") or (checked and sev == "positive"):
-            color = "green"
-        else:
-            color = "neutral"
-        return {
-            "label": it.get("label") or "—",
-            "detail": (it.get("detail") or "").strip() or None,
-            "color": color,
-            "checked": checked,
-        }
+        if sev in ("high", "red"): color = "red"
+        elif sev in ("medium", "amber"): color = "amber"
+        elif sev in ("positive", "green") or (checked and sev == "positive"): color = "green"
+        else: color = "neutral"
+        return {"label": it.get("label") or "—", "detail": (it.get("detail") or "").strip() or None, "color": color, "checked": checked,}
 
     risk: List[dict] = []
     fcu: List[dict] = []
@@ -301,62 +256,40 @@ def _build_checks(report: CustomerReport, scorecard: Optional[dict]) -> Optional
     for it in items:
         chk = _to_check(it)
         lbl = chk["label"]
-        if lbl in FCU_LABELS:
-            fcu.append(chk)
-        elif lbl in FRAUD_LABELS:
-            fraud.append(chk)
-        else:
-            risk.append(chk)
+        if lbl in FCU_LABELS: fcu.append(chk)
+        elif lbl in FRAUD_LABELS: fraud.append(chk)
+        else: risk.append(chk)
 
-    if not (risk or fcu or fraud):
-        return None
+    if not (risk or fcu or fraud): return None
 
     all_checks = risk + fcu + fraud
     red_count = sum(1 for c in all_checks if c["color"] == "red")
     amber_count = sum(1 for c in all_checks if c["color"] == "amber")
-    return {
-        "risk": risk,
-        "fcu": fcu,
-        "fraud": fraud,
-        "summary": f"{len(all_checks)} checks · {red_count} red · {amber_count} amber",
-    }
+    return { "risk": risk,"fcu": fcu,"fraud": fraud,"summary": f"{len(all_checks)} checks · {red_count} red · {amber_count} amber",}
 
 
 # ---------------------------------------------------------------------------
 # Banking summary
 # ---------------------------------------------------------------------------
 
-def _build_summary(
-    report: CustomerReport,
-    combined_summary: Optional[str],
-    scorecard: Optional[dict],
-) -> dict:
-    """Banking summary. Assumes the LLM-generated narrative is always passed
+def _build_summary(report: CustomerReport,combined_summary: Optional[str], scorecard: Optional[dict],) -> dict:
+    """Banking summary. Assumes the LLM-generated narrative is always passed 
     in (the report-generation path always produces one before rendering).
     """
     text = (combined_summary or "").strip()
     sentences = re.split(r"(?<=[.!?])\s+", text)
     teaser = " ".join(sentences[:2]).strip()
     rest = " ".join(sentences[2:]).strip()
-    return {
-        "teaser": teaser,
-        "rest": rest,
-        "has_more": bool(rest),
-    }
+    return {"teaser": teaser,"rest": rest,"has_more": bool(rest),}
 
 
 # ---------------------------------------------------------------------------
 # Cashflow / heatmap / category mix
 # ---------------------------------------------------------------------------
 
-def _build_cashflow(
-    report: CustomerReport,
-    balance_info: Optional[dict],
-    cust_df: Optional[pd.DataFrame] = None,
-) -> Optional[dict]:
+def _build_cashflow(report: CustomerReport,balance_info: Optional[dict],cust_df: Optional[pd.DataFrame] = None,) -> Optional[dict]:
     cf = report.monthly_cashflow
-    if not cf:
-        return None
+    if not cf: return None
     months = [m["month"] for m in cf]
     credits = [round(float(m.get("inflow", 0)), 0) for m in cf]
     debits = [-round(float(m.get("outflow", 0)), 0) for m in cf]
@@ -367,8 +300,7 @@ def _build_cashflow(
     balances: List[Optional[float]] = []
     if balance_info and balance_info.get("monthly_balances"):
         mb = balance_info["monthly_balances"]
-        for label in months:
-            balances.append(round(float(mb.get(label, 0)), 0) if label in mb else None)
+        for label in months: balances.append(round(float(mb.get(label, 0)), 0) if label in mb else None)
     else:
         balances = [None] * len(months)
 
@@ -380,8 +312,7 @@ def _build_cashflow(
             outflows_sorted = sorted(outflows, reverse=True)
             median = outflows_sorted[len(outflows_sorted) // 2]
             for m, d in zip(months, debits):
-                if median > 0 and abs(d) >= 1.5 * median:
-                    spike_dates.append(m)
+                if median > 0 and abs(d) >= 1.5 * median: spike_dates.append(m)
             spike_dates = spike_dates[:3]
     except Exception:
         spike_dates = []
@@ -399,10 +330,7 @@ def _build_cashflow(
     }
 
 
-def _per_txn_trends(
-    cust_df: Optional[pd.DataFrame],
-    months: List[str],
-) -> tuple:
+def _per_txn_trends(cust_df: Optional[pd.DataFrame],months: List[str],) -> tuple:
     """For each month label (YYYY-MM), compute per-transaction max & median
     credit and debit amounts. Returns four parallel lists; uses ``None`` when
     a month has no transactions on that side (Chart.js skips ``null``).
@@ -415,13 +343,8 @@ def _per_txn_trends(
     """
     n = len(months)
     empty = [None] * n
-    if cust_df is None or cust_df.empty:
-        return empty[:], empty[:], empty[:], empty[:]
+    if cust_df is None or cust_df.empty: return empty[:], empty[:], empty[:], empty[:]
     df = cust_df.copy()
-    df["tran_date"] = pd.to_datetime(df["tran_date"], errors="coerce")
-    df = df.dropna(subset=["tran_date"])
-    if df.empty:
-        return empty[:], empty[:], empty[:], empty[:]
     df["_ym"] = df["tran_date"].dt.strftime("%Y-%m")
     df["_amt"] = df["tran_amt_in_ac"].astype(float).abs()
     df = df[df["_amt"] > 0]
@@ -444,23 +367,16 @@ def _build_heatmap(cust_df: Optional[pd.DataFrame]) -> Optional[dict]:
     Returns dict with `grid` (levels 0-4), `month_labels`, `cols` (1..31), `total_debits`,
     `window_label`, and `mode` ("monthly" or "weekly" — currently always monthly).
     """
-    if cust_df is None or cust_df.empty:
-        return None
+    if cust_df is None or cust_df.empty: return None
     debits = cust_df[cust_df["dr_cr_indctor"] == "D"].copy()
-    if debits.empty:
-        return None
-    debits["tran_date"] = pd.to_datetime(debits["tran_date"], errors="coerce")
-    debits = debits.dropna(subset=["tran_date"])
-    if debits.empty:
-        return None
+    if debits.empty: return None
 
     debits["amt"] = debits["tran_amt_in_ac"].astype(float).abs()
     debits["ym"] = debits["tran_date"].dt.to_period("M")
     debits["dom"] = debits["tran_date"].dt.day.clip(1, 31)
 
     months_sorted = sorted(debits["ym"].unique())[-6:]
-    if not months_sorted:
-        return None
+    if not months_sorted: return None
     window = debits[debits["ym"].isin(months_sorted)]
 
     n_rows = len(months_sorted)
@@ -471,8 +387,7 @@ def _build_heatmap(cust_df: Optional[pd.DataFrame]) -> Optional[dict]:
         grid_amt[r][c] += float(row["amt"])
 
     flat = [v for row in grid_amt for v in row if v > 0]
-    if not flat:
-        return None
+    if not flat: return None
     flat_sorted = sorted(flat)
     n = len(flat_sorted)
     q1 = flat_sorted[n // 4] if n >= 4 else flat_sorted[0]
@@ -577,10 +492,7 @@ def _build_analysis(report: CustomerReport, cust_df: Optional[pd.DataFrame]) -> 
         return None
 
     df = cust_df.copy()
-    df["_dt"] = pd.to_datetime(df["tran_date"], errors="coerce")
-    df = df.dropna(subset=["_dt"])
-    if df.empty:
-        return None
+    df["_dt"] = df["tran_date"]
     df["_amt"] = df["tran_amt_in_ac"].astype(float).abs()
 
     # Per-variable list of (date, amount) pairs.
@@ -610,7 +522,7 @@ def _build_analysis(report: CustomerReport, cust_df: Optional[pd.DataFrame]) -> 
     for tm in (report.top_merchants or []):
         if tm.get("type") != "C" or tm.get("count", 0) < 2:
             continue
-        if sal and tm.get("name", "").upper().find((sal.narration or "")[:8].upper()) >= 0:
+        if sal and (nd := (sal.narration or "")[:8].upper()) and nd in tm.get("name", "").upper():
             continue
         dates = _merchant_credit_dates(cust_df, tm)
         avg = float(tm.get("avg") or 0)
@@ -791,7 +703,7 @@ def _build_recurring_credits(report: CustomerReport, rg_salary_data: Optional[di
         if tm.get("count", 0) < 2:
             continue
         # Skip if this looks like the salary entry (avoid duplication)
-        if sal and tm.get("name", "").upper().find((sal.narration or "")[:8].upper()) >= 0:
+        if sal and (nd := (sal.narration or "")[:8].upper()) and nd in tm.get("name", "").upper():
             continue
         dates = _merchant_credit_dates(cust_df, tm)
         win = _recurring_window(dates)
