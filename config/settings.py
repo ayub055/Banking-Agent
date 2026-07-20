@@ -53,7 +53,7 @@ CSV_DELIMITER = "\t"
 TRANSACTIONS_FILE = os.path.join(_PROJECT_ROOT, "data/xn_d1.csv")
 
 # Internal salary algorithm outputs
-# rg_income is now computed live by tools/salary_extractors/rg_income.py (no file).
+# rg_income is now computed live by tools/salary_extractors/rg_income/ (no file).
 RG_SAL_FILE = os.path.join(_PROJECT_ROOT, "data/rg_sal_strings.csv")
 
 LOG_DIR = "logs"
