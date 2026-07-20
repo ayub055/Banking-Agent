@@ -21,3 +21,4 @@ ppt/
 # Generated report artifacts (HTML / Excel output)
 reports/
 logs/
+*.txt
