@@ -148,6 +148,12 @@ def standardize_columns(df: pd.DataFrame) -> pd.DataFrame:
         df['PRTY_NAME'] = 'Unknown'  # Default party name
         logger.info("[Standardize] Added default PRTY_NAME='Unknown'")
 
+    # Coerce the amount to float64. Parquet often stores it as DECIMAL(p,s),
+    # which DuckDB infers narrowly from a pandas object column and then
+    # overflows on large values (e.g. 20_000_000 vs DECIMAL(17,10)). A plain
+    # float sidesteps the cast and keeps all three extractors happy.
+    df['TRAN_AMT_IN_AC'] = pd.to_numeric(df['TRAN_AMT_IN_AC'], errors='coerce').astype('float64')
+
     return df
 
 
