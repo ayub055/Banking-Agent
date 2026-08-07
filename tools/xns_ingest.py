@@ -38,16 +38,27 @@ OUT_COLUMNS = [
 
 SELF_KEYWORDS = ("OWN A/C", "OWN ACCOUNT", " OWN ", "/OWN ", "SELF")
 
-# header label -> canonical field
-_ALIASES = {
-    "sl.no": "sl_no", "sl. no.": "sl_no", "sl no": "sl_no", "s.no": "sl_no",
-    "date": "date", "tran_date": "date",
-    "cheque no": "cheque", "cheque no.": "cheque", "chq no": "cheque",
-    "description": "desc", "narration": "desc", "particulars": "desc",
-    "amount": "amount", "amt": "amount",
-    "category": "category", "cat": "category",
-    "balance": "balance", "bal": "balance",
-}
+# canonical field -> substrings that identify its column header (case-insensitive)
+_FIELD_MATCHERS = [
+    ("desc", ("description", "narration", "particular", "remarks")),
+    ("amount", ("amount", "amt")),
+    ("balance", ("balance", "closing bal")),
+    ("date", ("txn date", "transaction date", "value date", "tran date", "date")),
+    ("category", ("category",)),
+    ("cheque", ("cheque", "chq")),
+    ("acct_no", ("account no", "account number", "a/c no", "acct no")),
+]
+
+
+def _match_field(label: str):
+    """Map a header cell to a canonical field via substring match, or None."""
+    l = str(label or "").strip().lower()
+    if not l:
+        return None
+    for key, needles in _FIELD_MATCHERS:
+        if any(n in l for n in needles):
+            return key
+    return None
 
 
 def infer_tran_type(desc: str) -> str:
@@ -104,22 +115,48 @@ def fmt_amount(amt) -> str:
     return str(int(a)) if float(a).is_integer() else str(a)
 
 
+def _fmt_cell(c):
+    if c is None:
+        return ""
+    if isinstance(c, (datetime, date)):     # real Excel date cell
+        return c.strftime("%Y-%m-%d")
+    return str(c).strip()
+
+
+def _locate_columns(rows):
+    """Find the header row and map canonical field -> column index.
+
+    A header row is one that has a Description, an Amount, and a Date column
+    (matched by substring, so extra columns and header variants are tolerated).
+    """
+    for i, r in enumerate(rows):
+        idx = {}
+        for j, cellv in enumerate(r):
+            key = _match_field(cellv)
+            if key and key not in idx:
+                idx[key] = j
+        if "desc" in idx and "amount" in idx and "date" in idx:
+            return i, idx
+    raise ValueError(
+        "Could not locate an xns header row (need Description + Amount + Date). "
+        "Check the file has a header row with those columns."
+    )
+
+
 def _read_table(xns_path: Path):
-    """Return (list-of-rows, account_name, account_no) from an xlsx or csv xns file."""
+    """Return (rows, account_name, account_no) from an xlsx or csv xns file.
+
+    Delimiter is auto-detected for text files by trying tab/comma/semicolon/pipe
+    and keeping the one that yields a locatable header (robust to commas inside
+    values, e.g. 'ICICI Bank, India' or '(11,16,370.00)'). For workbooks, every
+    sheet is scanned for the ledger.
+    """
+    import io
     name = acct = ""
+
     if xns_path.suffix.lower() in (".xlsx", ".xlsm"):
         from openpyxl import load_workbook
         wb = load_workbook(xns_path, read_only=True, data_only=True)
-        sheet = "xns" if "xns" in wb.sheetnames else wb.sheetnames[0]
-
-        def _fmt(c):
-            if c is None:
-                return ""
-            if isinstance(c, (datetime, date)):     # real Excel date cell
-                return c.strftime("%Y-%m-%d")
-            return str(c).strip()
-
-        rows = [[_fmt(c) for c in r] for r in wb[sheet].iter_rows(values_only=True)]
         if "Analysis" in wb.sheetnames:
             for r in wb["Analysis"].iter_rows(values_only=True):
                 k = str(r[0]).strip() if r and r[0] else ""
@@ -128,29 +165,31 @@ def _read_table(xns_path: Path):
                     name = v
                 elif k == "Account No.":
                     acct = v
-        return rows, name, acct
-    # csv / tsv: sniff delimiter from the first non-empty line
-    with open(xns_path, newline="") as fh:
-        sample = fh.readline()
-    delim = "\t" if sample.count("\t") >= sample.count(",") else ","
-    with open(xns_path, newline="") as fh:
-        rows = [[c.strip() for c in r] for r in csv.reader(fh, delimiter=delim)]
-    return rows, name, acct
+        order = (["xns"] if "xns" in wb.sheetnames else []) + list(wb.sheetnames)
+        fallback = None
+        for sheet in order:
+            rows = [[_fmt_cell(c) for c in r] for r in wb[sheet].iter_rows(values_only=True)]
+            fallback = fallback or rows
+            try:
+                _locate_columns(rows)
+                return rows, name, acct
+            except ValueError:
+                continue
+        return fallback or [], name, acct
 
-
-def _locate_columns(rows):
-    """Find the header row and map canonical field -> column index."""
-    for i, r in enumerate(rows):
-        low = [c.lower() for c in r]
-        if "description" in low or "narration" in low or "particulars" in low:
-            idx = {}
-            for j, label in enumerate(low):
-                key = _ALIASES.get(label)
-                if key and key not in idx:
-                    idx[key] = j
-            if "desc" in idx and "amount" in idx:
-                return i, idx
-    raise ValueError("Could not locate an xns header row (need Description + Amount).")
+    # text file: try delimiters, keep the one that locates a header
+    with open(xns_path, newline="", encoding="utf-8-sig", errors="replace") as fh:
+        text = fh.read()
+    best = None
+    for delim in ("\t", ",", ";", "|"):
+        rows = [[c.strip() for c in row] for row in csv.reader(io.StringIO(text), delimiter=delim)]
+        try:
+            _locate_columns(rows)
+            return rows, name, acct
+        except ValueError:
+            if best is None or max((len(r) for r in rows), default=0) > max((len(r) for r in best), default=0):
+                best = rows
+    return best or [], name, acct
 
 
 def ingest_xns(xns_path, cust_id=None, party=None) -> Path:
@@ -159,12 +198,20 @@ def ingest_xns(xns_path, cust_id=None, party=None) -> Path:
     rows, name, acct = _read_table(xns_path)
     hdr, idx = _locate_columns(rows)
 
-    cid = str(cust_id or acct or xns_path.stem)
-    pty = party or name or ""
-
     def get(r, key):
         j = idx.get(key)
         return r[j].strip() if j is not None and j < len(r) else ""
+
+    # cust_id precedence: explicit arg > Analysis-tab account > Account No. column > filename
+    acct_col = ""
+    if "acct_no" in idx:
+        for r in rows[hdr + 1:]:
+            v = get(r, "acct_no")
+            if v:
+                acct_col = v
+                break
+    cid = str(cust_id or acct or acct_col or xns_path.stem)
+    pty = party or name or ""
 
     out_rows = []
     for r in rows[hdr + 1:]:
