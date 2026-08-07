@@ -1,0 +1,40 @@
+#	Possible Fraud Indicators			Identified?	Count of Triggers
+1	"Amount-Balance Mismatches
+Transactions whose amount/balance do not match with previous transactions. Perfios might have added Dummy fillers for identification. And, for reports generated through non-online mode, an intermediate excel file is generated when there is running balance mismatch. This trigger notifies that there was manual intervention in adding/ deleting/ editing the transactions to generate report"			N	
+2	"Cash Deposit On Holidays
+Cash Deposit transactions happening on holidays"			N	
+3	"Suspicious Salary Credits
+Salary credits on bank holidays and round figure credits."			Y	1
+4	"Suspicious bank eStatement
+Suspicious bank eStatements are those statements having a Statement Status of ""FRAUD"" OR ""REFER""."			N	
+5	"Atm Cash withdrawal
+ATM withdrawals with cheque number or mode of payment is NEFT/RTGS"			N	
+	Total number of types and count of Fraud indicators			1	1
+					
+#	Behavioural/Transactional Indicators			Identified?	Remarks
+6	"Equal Credit Debit
+Total amount of credit is exactly same as the total amount of debit, or total number of credit transactions is exactly same as the total number of debit transactions - both scenarios are extremely unlikely."			N	
+7	"Negative EOD Balance
+End of day bank balance on any day in an Savings account is unlikely to be negative."			N	
+8	"Immediate big debit after Salary credit
+Withdrawal of big amount of money soon after salary credit may be due to forged salary entries."			N	
+9	"Cash deposit higher than maximum salary
+Cash deposit transactions with amount greater than maximum salary"			N	
+10	"Irregular Salary Credits
+Salary Credits which are not in all months within a narrow date range."			Y	1 in 3 months 
+11	"Rounded salary transaction
+Salary transactions with rounded amount value"			Y	2
+12	"Round figure Tax Payments
+Tax paid amounts are usually not round figures, such as multiple of 100."			N	
+13	"More and frequent Cash Deposits than Salary
+Higher number or amount of cash deposits than salary is an unlikely scenario."			N	
+14	"No Transactions in the Expected Range
+Months for which there are no transactions before 5th and after 20th."			N	
+15	"Immediate cash withdrawals after cash deposit
+Withdrawal of huge % of cash deposited within less amount of time"			N	
+16	"Only cash transactions
+Maximum transactions involving cash deposit or withdrawals                                    "			N	
+17	"EMI Cheque Bounce
+Consecutive EMI Cheque bounce observed for the period"			N	
+18	"Suspicious Gaming Transactions
+Unusual count and amount of gaming transactions"			N	

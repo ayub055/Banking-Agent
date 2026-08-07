@@ -20,6 +20,7 @@ def render_combined_report(
     combined_summary: Optional[str] = None,
     rg_salary_data: Optional[dict] = None,
     theme: str = "bank_v2",
+    excel_workbook_b64: Optional[str] = None,
 ) -> str:
     """Render the banking HTML report and write it to disk.
 
@@ -39,7 +40,7 @@ def render_combined_report(
     output_file = Path(html_path)
     output_file.parent.mkdir(parents=True, exist_ok=True)
 
-    html_content = render_combined_report_html(customer_report, combined_summary=combined_summary, rg_salary_data=rg_salary_data, theme=theme,)
+    html_content = render_combined_report_html(customer_report, combined_summary=combined_summary, rg_salary_data=rg_salary_data, theme=theme, excel_workbook_b64=excel_workbook_b64,)
     with open(html_path, "w", encoding="utf-8") as f: f.write(html_content)
 
     return html_path
@@ -50,6 +51,7 @@ def render_combined_report_html(
     combined_summary: Optional[str] = None,
     rg_salary_data: Optional[dict] = None,
     theme: str = "bank_v2",
+    excel_workbook_b64: Optional[str] = None,
 ) -> str:
     """Render the banking HTML report using the canonical bank_v2 template.
         theme: Retained for call-site compatibility; only bank_v2 is supported.
@@ -72,4 +74,4 @@ def render_combined_report_html(
         bank_v2_ctx = None
 
     template = env.get_template("bank_report_v2.html")
-    return template.render(bank_v2=bank_v2_ctx)
+    return template.render(bank_v2=bank_v2_ctx, excel_workbook_b64=excel_workbook_b64 or "")

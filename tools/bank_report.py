@@ -21,9 +21,16 @@ _EXCEL_OUTPUT_DIR = os.path.join(
 def generate_bank_report(
     customer_id: int,
     theme: str = "bank_v2",
+    statement_source: Optional[str] = None,
 ) -> Tuple[Optional[CustomerReport], str]:
     """Build a banking-only CustomerReport and render it.
-        Tuple of (CustomerReport | None, output_path).
+
+    ``statement_source`` is the per-customer CSV generated from an xns file
+    (raw categories + eod_balance); when given, the 12-sheet workbook is built
+    from it. Otherwise the workbook is built from the loaded transactions
+    (balance-dependent sheets stay blank).
+
+    Returns a tuple of (CustomerReport | None, output_path).
     """
     from pipeline.reports.customer_report_builder import build_customer_report
     from pipeline.reports.report_summary_chain import generate_customer_review
@@ -47,8 +54,34 @@ def generate_bank_report(
         except Exception as e: logger.warning(f"customer_review generation failed: {e}")
 
     narrative = customer_report.customer_review if customer_report else None
+
+    # Build the full 12-sheet statement workbook FIRST so its bytes can be
+    # embedded (base64) into the HTML — the "Download as Excel" button then works
+    # straight from the HTML file, with no server or sibling file needed. The
+    # workbook is also written to disk (named file + a reports/ copy).
+    workbook_b64 = None
+    try:
+        import base64
+        from tools.statement_workbook import build_statement_workbook, DEFAULT_OUT
+        reports_copy = os.path.join("reports", "bank_statement_analysis.xlsx")
+        if statement_source:
+            wb_path = build_statement_workbook(source_csv=statement_source, out_path=DEFAULT_OUT,
+                                               reports_copy=reports_copy, customer_report=customer_report,
+                                               rg_salary_data=rg_salary_data)
+        else:
+            from data.loader import load_transactions
+            df = load_transactions()
+            cust_df = df[df["cust_id"] == customer_id].copy()
+            wb_path = build_statement_workbook(cust_df=cust_df, out_path=DEFAULT_OUT,
+                                               reports_copy=reports_copy, customer_report=customer_report,
+                                               rg_salary_data=rg_salary_data)
+        with open(wb_path, "rb") as fh:
+            workbook_b64 = base64.b64encode(fh.read()).decode("ascii")
+    except Exception as e: logger.warning(f"Statement workbook build failed for [{customer_id}]: {e}")
+
     output_path = f"reports/customer_{customer_id}_report_v2.html"
-    out = render_combined_report(customer_report, output_path=output_path, combined_summary=narrative, rg_salary_data=rg_salary_data, theme=theme)
+    out = render_combined_report(customer_report, output_path=output_path, combined_summary=narrative,
+                                 rg_salary_data=rg_salary_data, theme=theme, excel_workbook_b64=workbook_b64)
 
     try:
         from tools.excel_exporter import build_excel_row, export_row_to_excel

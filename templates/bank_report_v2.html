@@ -355,6 +355,7 @@
     <div class="notes-menu" id="exportMenu">
       <button class="btn" onclick="toggleExportMenu(event)" title="Export this report">Export ⤓</button>
       <div class="menu" role="menu">
+        <button onclick="closeExportMenu(); downloadStatementWorkbook();">Download as Excel</button>
         <button onclick="closeExportMenu(); window.print();">Download as PDF</button>
         <button onclick="closeExportMenu(); exportRiskTrailCSV();">Download as CSV</button>
         <button onclick="closeExportMenu(); downloadRiskTrail();">Download as JSON</button>
@@ -823,6 +824,7 @@
 
 {# Risk-trail payload — embedded once for client-side JSON export. Excludes the
    raw transactions table to keep the file analyst-sized. #}
+<script id="statement-workbook-b64" type="application/octet-stream">{{ excel_workbook_b64 }}</script>
 <script id="risk-trail-data" type="application/json">
 {{ {
   "customer_id": (bank_v2.header.customer_id if bank_v2 and bank_v2.header else None),
@@ -1081,6 +1083,26 @@
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', initNotes);
   else initNotes();
+
+  // ---- FULL STATEMENT WORKBOOK (.xlsx) -------------------------------------
+  // The 12-sheet workbook is embedded (base64) in this HTML, so the download
+  // works straight from the file — no server or sibling file required.
+  function downloadStatementWorkbook(){
+    try{
+      const node = document.getElementById('statement-workbook-b64');
+      const b64 = (node && node.textContent || '').trim();
+      if(!b64){ alert('No Excel workbook is embedded in this report.'); return; }
+      const bin = atob(b64);
+      const bytes = new Uint8Array(bin.length);
+      for(let i=0;i<bin.length;i++){ bytes[i] = bin.charCodeAt(i); }
+      const blob = new Blob([bytes], {type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'bank_statement_analysis.xlsx';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 0);
+    }catch(e){ console.error('workbook download failed', e); alert('Excel download failed — see console.'); }
+  }
 
   // ---- RISK TRAIL JSON EXPORT ----------------------------------------------
   function downloadRiskTrail(){

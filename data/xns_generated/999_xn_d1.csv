@@ -1,0 +1,3 @@
+cust_id	dr_cr_indctor	tran_date	prty_name	tran_amt_in_ac	tran_partclr	sal_flag	self_transfer	tran_type	category_of_txn	category_of_txn_l2	eod_balance
+999	D	2026-02-01		100	UPI/TEST/1		0	UPI	Food	Food	900
+999	C	2026-02-15		5000	NEFT SALARY ACME	1	0	NEFT	Salary	Salary	5900

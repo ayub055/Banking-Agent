@@ -44,7 +44,7 @@ def _normalise_categories(df: pd.DataFrame) -> pd.DataFrame:
     df["category_of_txn"] = canonical_l2.apply(l1_of)
 
     unknown_raw = sorted({
-        str(v).strip()
+        str(orig).strip()
         for orig, canon in zip(raw_l2, canonical_l2)
         if (str(orig).strip() and str(orig).strip().lower() not in {"nan", "null", "none"})
         and not canon
@@ -57,22 +57,27 @@ def _normalise_categories(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_transactions(force_reload: bool = False) -> pd.DataFrame:
+def load_transactions(force_reload: bool = False, path: Optional[str] = None) -> pd.DataFrame:
     """
     Load transaction data from CSV.
 
     Args:
         force_reload: If True, reload from disk even if cached
+        path: Optional alternate CSV to load (e.g. a per-customer file generated
+            from an xns statement). When given, it seeds the module cache so all
+            downstream ``load_transactions()`` calls transparently use it. The
+            canonical ``TRANSACTIONS_FILE`` is used when ``path`` is None.
 
     Returns:
         DataFrame with transaction data
     """
     global _transactions_df
 
-    if _transactions_df is None or force_reload:
-        _transactions_df = pd.read_csv(TRANSACTIONS_FILE, sep=CSV_DELIMITER, index_col=False)
+    if _transactions_df is None or force_reload or path is not None:
+        source = path or TRANSACTIONS_FILE
+        _transactions_df = pd.read_csv(source, sep=CSV_DELIMITER, index_col=False)
         _transactions_df = _normalise_categories(_transactions_df)
-        print(f"Loaded {len(_transactions_df)} transactions from {TRANSACTIONS_FILE}")
+        print(f"Loaded {len(_transactions_df)} transactions from {source}")
 
     return _transactions_df
 
