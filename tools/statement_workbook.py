@@ -402,7 +402,7 @@ def build_statement_workbook(source_csv=None, out_path=DEFAULT_OUT, reports_copy
         df = cust_df.copy()
         df["tran_date"] = df["tran_date"].astype(str)
     else:
-        df = pd.read_csv(source_csv, sep="\t", index_col=False, dtype={"tran_date": str})
+        df = pd.read_csv(source_csv, index_col=False, dtype={"tran_date": str})
     df = _prep(df)
     months = sorted(df["month"].unique())
     out_path = Path(out_path)

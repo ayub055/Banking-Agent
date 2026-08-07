@@ -1,5 +1,5 @@
 """Ingest an *xns* statement file into an ``xn_d1.csv``-compatible per-customer
-dataset (tab-separated), carrying the running Balance across as ``eod_balance``.
+dataset (comma-separated), carrying the running Balance across as ``eod_balance``.
 
 The canonical ``data/xn_d1.csv`` is never touched. Output goes to
 ``data/xns_generated/<cust>_xn_d1.csv`` so the pipeline can be pointed at it
@@ -241,7 +241,7 @@ def ingest_xns(xns_path, cust_id=None, party=None) -> Path:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     out_path = OUT_DIR / f"{cid}_xn_d1.csv"
     with open(out_path, "w", newline="") as fh:
-        w = csv.writer(fh, delimiter="\t")
+        w = csv.writer(fh)                       # comma-separated (fields with commas are quoted)
         w.writerow(OUT_COLUMNS)
         w.writerows(out_rows)
     return out_path

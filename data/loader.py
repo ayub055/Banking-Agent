@@ -57,7 +57,8 @@ def _normalise_categories(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def load_transactions(force_reload: bool = False, path: Optional[str] = None) -> pd.DataFrame:
+def load_transactions(force_reload: bool = False, path: Optional[str] = None,
+                      sep: Optional[str] = None) -> pd.DataFrame:
     """
     Load transaction data from CSV.
 
@@ -67,6 +68,9 @@ def load_transactions(force_reload: bool = False, path: Optional[str] = None) ->
             from an xns statement). When given, it seeds the module cache so all
             downstream ``load_transactions()`` calls transparently use it. The
             canonical ``TRANSACTIONS_FILE`` is used when ``path`` is None.
+        sep: Optional field delimiter. Defaults to ``CSV_DELIMITER`` (tab) for the
+            canonical files; the xns-generated files are comma-separated, so the
+            caller passes ``sep=","`` when seeding one of those.
 
     Returns:
         DataFrame with transaction data
@@ -75,7 +79,7 @@ def load_transactions(force_reload: bool = False, path: Optional[str] = None) ->
 
     if _transactions_df is None or force_reload or path is not None:
         source = path or TRANSACTIONS_FILE
-        _transactions_df = pd.read_csv(source, sep=CSV_DELIMITER, index_col=False)
+        _transactions_df = pd.read_csv(source, sep=sep or CSV_DELIMITER, index_col=False)
         _transactions_df = _normalise_categories(_transactions_df)
         print(f"Loaded {len(_transactions_df)} transactions from {source}")
 

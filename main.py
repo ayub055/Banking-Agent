@@ -13,6 +13,7 @@ import argparse
 import logging
 import re
 import sys
+from pathlib import Path
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
 
@@ -34,21 +35,27 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765, help="Port for --serve (default 8765)")
     parser.add_argument("--from-xns", dest="from_xns", default=None,
                         help="Path to an xns statement file (.xlsx/.csv) to convert and run over")
+    parser.add_argument("--data-file", dest="data_file", default=None,
+                        help="Path to an already-converted xn_d1-schema CSV (from tools.xns_ingest) to run over")
     parser.add_argument("--cust-id", dest="cust_id", default=None,
-                        help="Customer id to use with --from-xns")
+                        help="Customer id to use with --from-xns / --data-file")
     parser.add_argument("query", nargs="*", help="Free-text query (e.g. 'Generate customer report for customer 124')")
     args = parser.parse_args()
 
     statement_source = None
-    if args.from_xns:
-        from tools.xns_ingest import ingest_xns
+    if args.from_xns or args.data_file:
         from data.loader import load_transactions
-        converted = ingest_xns(args.from_xns, cust_id=args.cust_id)
+        if args.from_xns:
+            from tools.xns_ingest import ingest_xns
+            converted = ingest_xns(args.from_xns, cust_id=args.cust_id)
+            print(f"Ingested xns -> {converted}")
+        else:
+            converted = Path(args.data_file)     # already converted; run over it directly
         statement_source = str(converted)
         # Seed the loader cache so the whole pipeline runs over this customer's data.
-        load_transactions(path=statement_source, force_reload=True)
+        # The xns-generated file is comma-separated (unlike the tab-separated canonical CSVs).
+        load_transactions(path=statement_source, sep=",", force_reload=True)
         cid = int(args.cust_id) if args.cust_id and str(args.cust_id).isdigit() else _extract_customer_id(converted.stem)
-        print(f"Ingested xns -> {converted}")
     elif args.customer is not None:
         cid = args.customer
     elif args.query:

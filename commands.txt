@@ -15,13 +15,23 @@ python main.py --customer 698167220
 ### Way B — over an xns statement file (auto-converts, then generates)
 `--from-xns` does **both** the extraction and the report generation in one step.
 Accepts an `.xlsx` (with an `xns` sheet) or a `.csv/.tsv` with the xns headers
-(`Date, Description, Amount, Category, Balance`).
+(`Date, Description, Amount, Category, Balance` — extra columns like `Bank Name`,
+`Account No.` are fine; delimiter is auto-detected).
 ```bash
 python main.py --from-xns /path/to/statement.xlsx --cust-id 8111272729
 ```
 
-Balance-dependent sheets (EOD balances, balance-based FCU checks) fill only in
-Way B, because the xns file carries `Balance`.
+### Way C — two steps: convert first, then run over the converted CSV
+```bash
+# Step 1: convert xns -> data/xns_generated/<id>_xn_d1.csv (comma-separated, with eod_balance)
+python -m tools.xns_ingest /path/to/statement.xlsx --cust-id 8111272729
+
+# Step 2: generate the report from that CSV
+python main.py --data-file data/xns_generated/8111272729_xn_d1.csv --cust-id 8111272729
+```
+
+Balance-dependent sheets (EOD balances, balance-based FCU checks) fill in Ways B
+and C, because the xns file carries `Balance`.
 
 ### Serve it in a browser (add to either way)
 ```bash
