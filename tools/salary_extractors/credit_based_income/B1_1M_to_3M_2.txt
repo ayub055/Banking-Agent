@@ -1,0 +1,364 @@
+/* ============================================================================
+   PHASE B1 — MONTHLY AGGREGATION FOR MONTHS 1 to 3
+   ----------------------------------------------------------------------------
+   Purpose:
+     Take 12 months of raw customer bank transactions and, for the FIRST
+     quarter (transaction months 1, 2 and 3 counting back from the business
+     date), produce one row PER CUSTOMER holding that quarter's spending /
+     credit metrics.
+
+   This notebook is one of four identical siblings that differ ONLY in the
+   month range they aggregate:
+       B1 -> months 1-3      B2 -> months 4-6
+       B3 -> months 7-9      B4 -> months 10-12
+   Their outputs (…_1_3, …_2_3, …_3_3, …_4_3) are later stitched together
+   in "C. Features".
+
+   Pipeline inside this file:
+     Step 1  Load raw txns, tag transaction age, mode, sweep & loan flags
+     Step 2  Extract a clean counterparty "MERCHANT" name from the narration
+     Step 3  Flag self-transfers (money moved between the customer's own a/cs)
+     Step 4  Aggregate everything to one row per customer for months 1-3
+   ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   PROCEDURE CALLS (environment setup — run once at the top)
+   ----------------------------------------------------------------------------
+   These stored procedures read the reporting month from a config table
+   (sc_franchise_segment_vars.business_month) and materialise the raw
+   transaction feed `sc1_union` for the 3-month window ending at that month.
+   Arguments: (business_month, end_month=3, window_size=3, franchise='sc').
+   In the centralised version these are replaced by simply loading the
+   source CSV — they are kept here only to document the original data source.
+   ---------------------------------------------------------------------------- */
+CREATE OR REPLACE PROCEDURE call_with_session_var_1()
+AS $$
+DECLARE
+    business_month VARCHAR;
+BEGIN
+    SELECT value::VARCHAR INTO business_month
+    FROM kmbl_risk.sandbox.sc_franchise_segment_vars
+    WHERE key = 'business_month';
+
+    -- Build / refresh the raw monthly transaction feed for this window.
+    CALL run_sc_monthly_data1(business_month, 3, 3, 'sc');
+    -- Union the per-month slices into the single source table `sc1_union`.
+    CALL run_union_sc_monthly_data(business_month, 3, 3, 'sc', '1');
+END;
+$$ LANGUAGE plpgsql;
+
+CALL call_with_session_var_1();
+
+
+/* ----------------------------------------------------------------------------
+   STEP 1 — BASE TRANSFORM
+   ----------------------------------------------------------------------------
+   Starting from raw transactions (sc1_union), derive per-transaction tags:
+
+   diff_open_tranx : transaction "age" in whole months = how many months back
+                     the txn is from the business date. 1 = most recent month.
+                     Uses LAST_DAY on both dates so partial months align.
+   TRAN_MODE       : payment rail. Here only UPI is separated out
+                     (UPI_REV = a UPI reversal, else UPI). NULL for non-UPI.
+   sweep_flag      : 1 if the txn is an internal sweep (auto FD/liquid moves) —
+                     these are noise and get excluded from aggregates later.
+   loan_tag        : 1 if the CREDIT looks like a loan disbursement (many
+                     lender name / "DISB" patterns). Loan inflows are NOT
+                     income, so credits with loan_tag=1 are excluded later.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_1;
+CREATE TABLE SC_banking_segment_franchise_1 AS
+SELECT *
+    -- Age of the transaction in months (1 = latest month in the window).
+    , datediff('month', LAST_DAY(tran_date), LAST_DAY(business_date::DATE)) AS diff_open_tranx
+
+    -- Payment rail flag (only UPI is distinguished; reversals tagged UPI_REV).
+    , CASE
+        WHEN tran_partclr ILIKE '%UPI%' THEN
+            CASE WHEN tran_partclr ILIKE 'REV%' THEN 'UPI_REV' ELSE 'UPI' END
+      END AS TRAN_MODE
+
+    -- Internal sweep transactions (excluded from spend/income aggregates).
+    , CASE
+        WHEN TRAN_PARTCLR ILIKE 'SWEEP %'  THEN 1
+        WHEN TRAN_PARTCLR ILIKE '%SWEEP%'  THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% SWEEP %' THEN 1
+        ELSE 0
+      END AS sweep_flag
+
+    -- Loan-disbursement detection (lender names + generic DISB markers).
+    -- Credits flagged here are treated as borrowings, not income.
+    , CASE
+        WHEN tran_partclr ILIKE '% loan %'                       THEN 1
+        WHEN tran_partclr ILIKE '%/loan%'                        THEN 1
+        WHEN tran_partclr ILIKE '%finan%'                        THEN 1
+        WHEN tran_partclr ILIKE '%fincap%'                       THEN 1
+        WHEN tran_partclr ILIKE '%finser%'                       THEN 1
+        WHEN tran_partclr ILIKE '%LOS PL%'                       THEN 1
+        WHEN tran_partclr ILIKE '%LOM PL%'                       THEN 1
+        WHEN tran_partclr ILIKE '%WAC PL%'                       THEN 1
+        WHEN tran_partclr ILIKE '%PLCC%'                         THEN 1
+        WHEN tran_partclr ILIKE '%MOBILE BANKING PL%'            THEN 1
+        WHEN tran_partclr ILIKE '%HDFC DISB FUNDED HDFC%'        THEN 1
+        WHEN tran_partclr ILIKE '%ICICI BANK LTD RAOG NEFT DISB%' THEN 1
+        WHEN tran_partclr ILIKE '%FULLERTON INDIA CREDIT COMP%'  THEN 1
+        WHEN tran_partclr ILIKE '%RA-LOAN DISBURSEMENT A/C%'     THEN 1
+        WHEN tran_partclr ILIKE '%LOAN FROM CLIX%'               THEN 1
+        WHEN tran_partclr ILIKE '%PL DISBURSEMENT SUSP%'         THEN 1
+        WHEN tran_partclr ILIKE '%RA DISBURSEMENT A/C%'          THEN 1
+        WHEN tran_partclr ILIKE '%MYLOANCARE VENTURES%'          THEN 1
+        WHEN tran_partclr ILIKE '%DISB%'                         THEN 1
+        ELSE 0
+      END AS loan_tag
+FROM sc1_union;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 2 — MERCHANT / COUNTERPARTY NAME EXTRACTION
+   ----------------------------------------------------------------------------
+   The transaction narration (tran_partclr) embeds the counterparty name in
+   dozens of bank-specific formats. This block parses out that name per rail:
+
+     UPI / NEFT / IMPS / RTGS / IFT / NACH  -> pull the name token via
+                                               SPLIT_PART / SUBSTRING / REPLACE
+     Fund-transfer & internet/mobile-banking prefixes (IB:, MB:, "FROM …")
+     Cash / ATM (ATL, ATW)                  -> tagged 'CASH_TRANSACTION'
+     Sweeps                                 -> tagged 'SWEEP'
+
+   TREAT_NUMBERS_FLAG : marks narrations (IB: … , SENTIMPS …) whose extracted
+                        name still contains digits/symbols that must be stripped.
+   MERCHANT1          : final cleaned name — for flagged rows, strip everything
+                        except letters/spaces; otherwise use MERCHANT as-is.
+   MERCHANT1 is what feeds the self-transfer name match in Step 3.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_1_1;
+CREATE TABLE SC_banking_segment_franchise_1_1 AS
+WITH sub AS (
+    SELECT *
+        , CASE
+            -- ---- UPI ----
+            WHEN tran_partclr ILIKE '%UPI%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'UPI/%'            THEN SPLIT_PART(tran_partclr, '/', 2)
+                    WHEN tran_partclr ILIKE 'UPI_CRADJ%'       THEN NULL   -- credit adjustment, no name
+                    WHEN TRAN_PARTCLR ILIKE 'UPI-REMI-FAILED%' THEN NULL   -- failed remittance
+                    WHEN TRAN_PARTCLR ILIKE 'REV-UPI/%'        THEN SPLIT_PART(tran_partclr, '/', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'UPI_RET/%'        THEN NULL   -- returned txn
+                    ELSE NULL
+                END
+            -- ---- NEFT ----
+            WHEN tran_partclr ILIKE '%NEFT%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'NEFT %'      THEN substring(right(tran_partclr, len(tran_partclr) - 5), charindex(' ', right(tran_partclr, len(tran_partclr) - 5)) + 1, len(tran_partclr))
+                    WHEN tran_partclr ILIKE '%NEFT/RTGS%' THEN SPLIT_PART(TRAN_PARTCLR, 'NEFT/RTGS', 1)
+                    WHEN tran_partclr ILIKE 'IFT-%'       THEN REPLACE(REPLACE(REPLACE(TRAN_PARTCLR, 'RTGS', ''), 'NEFT', ''), 'IFT-', '')
+                    WHEN tran_partclr ILIKE 'Sent NEFT%'  THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN tran_partclr ILIKE '%SENT NEFT %' THEN SPLIT_PART(TRAN_PARTCLR, 'SENT NEFT ', 2)
+                    WHEN tran_partclr ILIKE '%SENT NEFT/%' THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN tran_partclr ILIKE 'NEFT-%'      THEN SPLIT_PART(TRAN_PARTCLR, '-', 2)
+                    WHEN tran_partclr ILIKE 'MB:NEFT %'   THEN REPLACE(tran_partclr, 'MB:NEFT ', '')
+                    ELSE NULL
+                END
+            -- ---- IMPS ----
+            WHEN tran_partclr ILIKE '%IMPS%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'IMPS %'        THEN RIGHT(TRAN_PARTCLR, LEN(TRAN_PARTCLR) - 5)
+                    WHEN tran_partclr ILIKE 'Recd:IMPS%'    THEN SPLIT_PART(tran_partclr, '/', 3)
+                    WHEN tran_partclr ILIKE 'IMPS-BENETO%'  THEN SPLIT_PART(tran_partclr, '-', 4)
+                    WHEN tran_partclr ILIKE 'IMPSBENETO%'   THEN SPLIT_PART(tran_partclr, '-', 3)
+                    WHEN tran_partclr ILIKE 'REV Chrg:IMPS%' THEN NULL    -- reversal charge
+                    WHEN tran_partclr ILIKE 'IMPS-%'        THEN REPLACE(tran_partclr, 'IMPS-', '')
+                    WHEN TRAN_PARTCLR ILIKE '%SENTIMPS%'    THEN REPLACE(SPLIT_PART(TRAN_PARTCLR, '/', 1), 'SentIMPS', '')
+                    ELSE NULL
+                    -- NOTE: various IMPS reversal/return/failed patterns intentionally fall through to NULL.
+                END
+            -- ---- RTGS ----
+            WHEN tran_partclr ILIKE '%RTGS%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'RTGS %'        THEN substring(right(tran_partclr, len(tran_partclr) - 5), charindex(' ', right(tran_partclr, len(tran_partclr) - 5)), len(tran_partclr))
+                    WHEN tran_partclr ILIKE 'MB:SENT RTGS %' THEN REPLACE(TRAN_PARTCLR, 'MB:SENT RTGS ', '')
+                    WHEN tran_partclr ILIKE 'BRB:Sent RTGS %' THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'SENT RTGS%'    THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'RTGS-%'        THEN SPLIT_PART(TRAN_PARTCLR, '-', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'IB:Sent RTGS %' THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    ELSE NULL
+                END
+            -- ---- Other rails & prefixes ----
+            WHEN tran_partclr ILIKE '%IFT-%'            THEN SPLIT_PART(tran_partclr, '-', 2)
+            WHEN tran_partclr ILIKE '%NACH-%'           THEN SPLIT_PART(tran_partclr, '-', 4)
+            WHEN tran_partclr ILIKE 'IB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'FUND TRF FROM%'    THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'FT FROM%'          THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'FUNDS TRF FROM%'   THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE '%MB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'MB:SENT TO %'      THEN REPLACE(TRAN_PARTCLR, 'MB:SENT TO ', '')
+            WHEN tran_partclr ILIKE '%IB:FUND%'         THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'MB:%'              THEN REPLACE(TRAN_PARTCLR, 'MB:', '')
+            WHEN tran_partclr ILIKE 'IB:%'              THEN REPLACE(TRAN_PARTCLR, 'IB:', '')
+            WHEN tran_partclr ILIKE 'CASH DEPOSIT BY %' THEN REPLACE(TRAN_PARTCLR, 'CASH DEPOSIT BY ', '')
+            WHEN TRAN_PARTCLR ILIKE 'ATL/%'             THEN 'CASH_TRANSACTION'  -- ATM / cash
+            WHEN TRAN_PARTCLR ILIKE 'ATW/%'             THEN 'CASH_TRANSACTION'
+            WHEN TRAN_PARTCLR ILIKE '%SWEEP%'           THEN 'SWEEP'
+            WHEN TRAN_PARTCLR ILIKE 'PCD/%'             THEN SPLIT_PART(TRAN_PARTCLR, '/', 3)
+            WHEN TRAN_PARTCLR ILIKE 'PG %'              THEN REPLACE(TRAN_PARTCLR, 'PG ', '')
+            WHEN TRAN_PARTCLR ILIKE 'CLG TO %'          THEN REPLACE(TRAN_PARTCLR, 'CLG TO ', '')
+          END AS MERCHANT
+
+        -- Rows whose extracted name still contains digits/symbols to strip.
+        , CASE
+            WHEN TRAN_PARTCLR ILIKE 'IB: %'     THEN 1
+            WHEN TRAN_PARTCLR ILIKE '%SENTIMPS%' THEN 1
+            ELSE 0
+          END AS TREAT_NUMBERS_FLAG
+    FROM SC_banking_segment_franchise_1
+)
+SELECT *
+    -- Final cleaned counterparty name: strip non-letters where flagged.
+    , CASE
+        WHEN TREAT_NUMBERS_FLAG = 1 THEN TRIM(REGEXP_REPLACE(MERCHANT, '[^a-zA-Z\s]', ''))
+        ELSE MERCHANT
+      END AS MERCHANT1
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   (OPTIONAL) ATTACH ACCOUNT-HOLDER NAME — currently disabled in source
+   ----------------------------------------------------------------------------
+   The self-transfer check in Step 3 compares the counterparty MERCHANT1
+   against the customer's OWN name (prty_name). In the original this join was
+   sometimes done in a separate step; here it is left commented as reference.
+   In the centralised version, prty_name is expected to arrive on the input
+   feed so the DIFFERENCE() name match below can run.
+   ---------------------------------------------------------------------------- */
+-- DROP TABLE IF EXISTS SC_banking_segment_franchise_1_11;
+-- CREATE TABLE SC_banking_segment_franchise_1_11 AS
+-- SELECT a.*, b.prty_name
+-- FROM SC_banking_segment_franchise_1_1 a
+-- LEFT JOIN SC_DISTINCT_NAME1 b ON a.cust_id = b.cust_id;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 3 — SELF-TRANSFER FLAG
+   ----------------------------------------------------------------------------
+   A "self transfer" is money the customer moves between their own accounts —
+   it must NOT be counted as income. Two signals combine:
+
+     sim_score = DIFFERENCE(merchant1, prty_name)
+                 Snowflake DIFFERENCE returns a 0-4 Soundex-overlap score;
+                 >= 4 means the counterparty name essentially matches the
+                 customer's own name  ->  self transfer.
+                 (DuckDB port: replicate via soundex() 4-char overlap.)
+
+     Explicit narration keywords (OWN / SELF / MYSELF) also force the flag.
+
+   SELF_TRANSFER_FLAG = 1 when either signal fires.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_1_2;
+CREATE TABLE SC_banking_segment_franchise_1_2 AS
+WITH sub AS (
+    SELECT *
+        , DIFFERENCE(merchant1, prty_name) AS sim_score   -- 0-4 name-sound match
+    FROM SC_banking_segment_franchise_1_1
+)
+SELECT *
+    , CASE
+        WHEN sim_score >= 4                    THEN 1   -- name matches own name
+        WHEN TRAN_PARTCLR ILIKE '% OWN %'      THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% SELF %'     THEN 1
+        WHEN TRAN_PARTCLR ILIKE '%/SELF %'     THEN 1
+        WHEN TRAN_PARTCLR ILIKE '%/MYSELF%'    THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% MYSELF %'   THEN 1
+        ELSE 0
+      END AS SELF_TRANSFER_FLAG
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   (QA CHECK) — inspect self-transfer rows. Not part of the pipeline.
+   ---------------------------------------------------------------------------- */
+SELECT * FROM SC_banking_segment_franchise_1_2
+WHERE SELF_TRANSFER_FLAG = 1;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 4 — PER-CUSTOMER MONTHLY AGGREGATION (months 1-3)
+   ----------------------------------------------------------------------------
+   Collapse the transaction-level table to ONE ROW PER CUSTOMER, producing a
+   set of metrics for EACH month in this window (suffix _01M, _02M, _03M).
+   The conditional aggregation pattern is: aggregate only rows whose
+   diff_open_tranx = the target month AND the right credit/debit side.
+
+   Metrics produced per month:
+     sum_txn_amount_CR/DR   total credit / debit amount
+     sum_st_amt_CR/DR       self-transfer portion of that amount
+     txn_count_CR/DR        number of credit / debit txns (NULL if zero)
+     max_txn_amount_CR      largest single credit (used to detect salary)
+     avg/sum_txn_amount_CR_UPI  UPI-credit average & total
+     txn_count_CR_UPI       number of UPI credits
+
+   WHERE clause — noise removal:
+     • keep DEBITS only if not a sweep
+     • keep CREDITS only if not a loan disbursement AND not a sweep
+   This is what makes downstream "credit" figures represent genuine inflows.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_1_3;
+CREATE TABLE SC_banking_segment_franchise_1_3 AS
+SELECT cust_id
+
+    -- Total CREDIT amount per month.
+    , sum(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' THEN tran_amt END) AS sum_txn_amount_CR_01M
+    , sum(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' THEN tran_amt END) AS sum_txn_amount_CR_02M
+    , sum(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' THEN tran_amt END) AS sum_txn_amount_CR_03M
+
+    -- Self-transfer CREDIT amount per month (subset of the above).
+    , sum(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_CR_01M
+    , sum(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_CR_02M
+    , sum(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_CR_03M
+
+    -- Total DEBIT amount per month.
+    , sum(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'D' THEN tran_amt END) AS sum_txn_amount_DR_01M
+    , sum(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'D' THEN tran_amt END) AS sum_txn_amount_DR_02M
+    , sum(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'D' THEN tran_amt END) AS sum_txn_amount_DR_03M
+
+    -- Self-transfer DEBIT amount per month.
+    , sum(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'D' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_DR_01M
+    , sum(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'D' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_DR_02M
+    , sum(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'D' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_DR_03M
+
+    -- CREDIT txn count per month (NULLIF -> NULL when zero, so "no activity"
+    -- is distinguishable from "zero amount").
+    , nullif(count(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' THEN cust_id END), 0) AS txn_count_CR_01M
+    , nullif(count(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' THEN cust_id END), 0) AS txn_count_CR_02M
+    , nullif(count(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' THEN cust_id END), 0) AS txn_count_CR_03M
+
+    -- DEBIT txn count per month.
+    , nullif(count(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'D' THEN cust_id END), 0) AS txn_count_DR_01M
+    , nullif(count(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'D' THEN cust_id END), 0) AS txn_count_DR_02M
+    , nullif(count(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'D' THEN cust_id END), 0) AS txn_count_DR_03M
+
+    -- Largest single CREDIT per month (a dominant credit hints at salary).
+    , max(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' THEN tran_amt END) AS max_txn_amount_CR_01M
+    , max(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' THEN tran_amt END) AS max_txn_amount_CR_02M
+    , max(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' THEN tran_amt END) AS max_txn_amount_CR_03M
+
+    -- Average UPI-CREDIT ticket size per month.
+    , avg(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS avg_txn_amount_CR_upi_01M
+    , avg(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS avg_txn_amount_CR_upi_02M
+    , avg(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS avg_txn_amount_CR_upi_03M
+
+    -- Total UPI-CREDIT amount per month (used to classify UPI businesses).
+    , sum(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS sum_txn_amount_CR_UPI_01M
+    , sum(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS sum_txn_amount_CR_UPI_02M
+    , sum(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS sum_txn_amount_CR_UPI_03M
+
+    -- Number of UPI CREDITS per month.
+    , nullif(count(CASE WHEN diff_open_tranx = 1 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN cust_id END), 0) AS txn_count_CR_UPI_01M
+    , nullif(count(CASE WHEN diff_open_tranx = 2 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN cust_id END), 0) AS txn_count_CR_UPI_02M
+    , nullif(count(CASE WHEN diff_open_tranx = 3 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN cust_id END), 0) AS txn_count_CR_UPI_03M
+
+FROM SC_banking_segment_franchise_1_2
+-- Noise removal: drop sweeps everywhere and loan-disbursement credits.
+WHERE (cr_dr_indicator = 'D' AND sweep_flag = 0)
+   OR (cr_dr_indicator = 'C' AND loan_tag = 0 AND sweep_flag = 0)
+GROUP BY cust_id;

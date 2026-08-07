@@ -1,0 +1,260 @@
+/* ============================================================================
+   PHASE B2 — MONTHLY AGGREGATION FOR MONTHS 4 to 6
+   ----------------------------------------------------------------------------
+   IDENTICAL LOGIC TO B1 — only the month range differs.
+       B1 -> months 1-3      B2 -> months 4-6  (THIS FILE)
+       B3 -> months 7-9      B4 -> months 10-12
+
+   Table suffix here is `_2*` (vs `_1*` in B1). The output table
+   SC_banking_segment_franchise_2_3 holds one row per customer with metrics
+   for months 4, 5 and 6 (columns …_04M, …_05M, …_06M).
+
+   For the FULL, heavily-annotated explanation of every step, see B1.
+   Steps below are the same:
+     Step 1  Base transform (diff_open_tranx, TRAN_MODE, sweep_flag, loan_tag)
+     Step 2  Merchant / counterparty name extraction (MERCHANT1)
+     Step 3  Self-transfer flag (name match + OWN/SELF/MYSELF keywords)
+     Step 4  Per-customer aggregation for months 4-6
+   ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   PROCEDURE CALLS — build the raw feed for the months 4-6 window.
+   Args: (business_month, end_month=6, window_size=3, franchise='sc').
+   ---------------------------------------------------------------------------- */
+CREATE OR REPLACE PROCEDURE call_with_session_var_2()
+AS $$
+DECLARE
+    business_month VARCHAR;
+BEGIN
+    SELECT value::VARCHAR INTO business_month
+    FROM kmbl_risk.sandbox.sc_franchise_segment_vars
+    WHERE key = 'business_month';
+
+    CALL run_sc_monthly_data1(business_month, 6, 3, 'sc');
+    CALL run_union_sc_monthly_data(business_month, 6, 3, 'sc', '1');
+END;
+$$ LANGUAGE plpgsql;
+
+CALL call_with_session_var_2();
+
+
+/* ----------------------------------------------------------------------------
+   STEP 1 — BASE TRANSFORM  (see B1 for full field explanations)
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_2;
+CREATE TABLE SC_banking_segment_franchise_2 AS
+SELECT *
+    , datediff('month', LAST_DAY(tran_date), LAST_DAY(business_date::DATE)) AS diff_open_tranx  -- txn age in months
+    , CASE
+        WHEN tran_partclr ILIKE '%UPI%' THEN
+            CASE WHEN tran_partclr ILIKE 'REV%' THEN 'UPI_REV' ELSE 'UPI' END
+      END AS TRAN_MODE                                                                          -- payment rail (UPI only)
+    , CASE
+        WHEN TRAN_PARTCLR ILIKE 'SWEEP %'   THEN 1
+        WHEN TRAN_PARTCLR ILIKE '%SWEEP%'   THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% SWEEP %' THEN 1
+        ELSE 0
+      END AS sweep_flag                                                                         -- internal sweep noise
+    , CASE
+        WHEN tran_partclr ILIKE '% loan %'                        THEN 1
+        WHEN tran_partclr ILIKE '%/loan%'                         THEN 1
+        WHEN tran_partclr ILIKE '%finan%'                         THEN 1
+        WHEN tran_partclr ILIKE '%fincap%'                        THEN 1
+        WHEN tran_partclr ILIKE '%finser%'                        THEN 1
+        WHEN tran_partclr ILIKE '%LOS PL%'                        THEN 1
+        WHEN tran_partclr ILIKE '%LOM PL%'                        THEN 1
+        WHEN tran_partclr ILIKE '%WAC PL%'                        THEN 1
+        WHEN tran_partclr ILIKE '%PLCC%'                          THEN 1
+        WHEN tran_partclr ILIKE '%MOBILE BANKING PL%'             THEN 1
+        WHEN tran_partclr ILIKE '%HDFC DISB FUNDED HDFC%'         THEN 1
+        WHEN tran_partclr ILIKE '%ICICI BANK LTD RAOG NEFT DISB%' THEN 1
+        WHEN tran_partclr ILIKE '%FULLERTON INDIA CREDIT COMP%'   THEN 1
+        WHEN tran_partclr ILIKE '%RA-LOAN DISBURSEMENT A/C%'      THEN 1
+        WHEN tran_partclr ILIKE '%LOAN FROM CLIX%'                THEN 1
+        WHEN tran_partclr ILIKE '%PL DISBURSEMENT SUSP%'          THEN 1
+        WHEN tran_partclr ILIKE '%RA DISBURSEMENT A/C%'           THEN 1
+        WHEN tran_partclr ILIKE '%MYLOANCARE VENTURES%'           THEN 1
+        WHEN tran_partclr ILIKE '%DISB%'                          THEN 1
+        ELSE 0
+      END AS loan_tag                                                                           -- loan disbursement (not income)
+FROM sc2_union;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 2 — MERCHANT / COUNTERPARTY NAME EXTRACTION  (see B1 for details)
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_2_1;
+CREATE TABLE SC_banking_segment_franchise_2_1 AS
+WITH sub AS (
+    SELECT *
+        , CASE
+            WHEN tran_partclr ILIKE '%UPI%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'UPI/%'            THEN SPLIT_PART(tran_partclr, '/', 2)
+                    WHEN tran_partclr ILIKE 'UPI_CRADJ%'       THEN NULL
+                    WHEN TRAN_PARTCLR ILIKE 'UPI-REMI-FAILED%' THEN NULL
+                    WHEN TRAN_PARTCLR ILIKE 'REV-UPI/%'        THEN SPLIT_PART(tran_partclr, '/', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'UPI_RET/%'        THEN NULL
+                    ELSE NULL
+                END
+            WHEN tran_partclr ILIKE '%NEFT%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'NEFT %'       THEN substring(right(tran_partclr, len(tran_partclr) - 5), charindex(' ', right(tran_partclr, len(tran_partclr) - 5)) + 1, len(tran_partclr))
+                    WHEN tran_partclr ILIKE '%NEFT/RTGS%'  THEN SPLIT_PART(TRAN_PARTCLR, 'NEFT/RTGS', 1)
+                    WHEN tran_partclr ILIKE 'IFT-%'        THEN REPLACE(REPLACE(REPLACE(TRAN_PARTCLR, 'RTGS', ''), 'NEFT', ''), 'IFT-', '')
+                    WHEN tran_partclr ILIKE 'Sent NEFT%'   THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN tran_partclr ILIKE '%SENT NEFT %' THEN SPLIT_PART(TRAN_PARTCLR, 'SENT NEFT ', 2)
+                    WHEN tran_partclr ILIKE '%SENT NEFT/%' THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN tran_partclr ILIKE 'NEFT-%'       THEN SPLIT_PART(TRAN_PARTCLR, '-', 2)
+                    WHEN tran_partclr ILIKE 'MB:NEFT %'    THEN REPLACE(tran_partclr, 'MB:NEFT ', '')
+                    ELSE NULL
+                END
+            WHEN tran_partclr ILIKE '%IMPS%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'IMPS %'         THEN RIGHT(TRAN_PARTCLR, LEN(TRAN_PARTCLR) - 5)
+                    WHEN tran_partclr ILIKE 'Recd:IMPS%'     THEN SPLIT_PART(tran_partclr, '/', 3)
+                    WHEN tran_partclr ILIKE 'IMPS-BENETO%'   THEN SPLIT_PART(tran_partclr, '-', 4)
+                    WHEN tran_partclr ILIKE 'IMPSBENETO%'    THEN SPLIT_PART(tran_partclr, '-', 3)
+                    WHEN tran_partclr ILIKE 'REV Chrg:IMPS%' THEN NULL
+                    WHEN tran_partclr ILIKE 'IMPS-%'         THEN REPLACE(tran_partclr, 'IMPS-', '')
+                    WHEN TRAN_PARTCLR ILIKE '%SENTIMPS%'     THEN REPLACE(SPLIT_PART(TRAN_PARTCLR, '/', 1), 'SentIMPS', '')
+                    ELSE NULL
+                END
+            WHEN tran_partclr ILIKE '%RTGS%' THEN
+                CASE
+                    WHEN tran_partclr ILIKE 'RTGS %'          THEN substring(right(tran_partclr, len(tran_partclr) - 5), charindex(' ', right(tran_partclr, len(tran_partclr) - 5)), len(tran_partclr))
+                    WHEN tran_partclr ILIKE 'MB:SENT RTGS %'  THEN REPLACE(TRAN_PARTCLR, 'MB:SENT RTGS ', '')
+                    WHEN tran_partclr ILIKE 'BRB:Sent RTGS %' THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'SENT RTGS%'      THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'RTGS-%'          THEN SPLIT_PART(TRAN_PARTCLR, '-', 2)
+                    WHEN TRAN_PARTCLR ILIKE 'IB:Sent RTGS %'  THEN SPLIT_PART(TRAN_PARTCLR, '/', 2)
+                    ELSE NULL
+                END
+            WHEN tran_partclr ILIKE '%IFT-%'             THEN SPLIT_PART(tran_partclr, '-', 2)
+            WHEN tran_partclr ILIKE '%NACH-%'            THEN SPLIT_PART(tran_partclr, '-', 4)
+            WHEN tran_partclr ILIKE 'IB:RECEIVED FROM%'  THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'FUND TRF FROM%'     THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'FT FROM%'           THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'FUNDS TRF FROM%'    THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE '%MB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'MB:SENT TO %'       THEN REPLACE(TRAN_PARTCLR, 'MB:SENT TO ', '')
+            WHEN tran_partclr ILIKE '%IB:FUND%'          THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+            WHEN tran_partclr ILIKE 'MB:%'               THEN REPLACE(TRAN_PARTCLR, 'MB:', '')
+            WHEN tran_partclr ILIKE 'IB:%'               THEN REPLACE(TRAN_PARTCLR, 'IB:', '')
+            WHEN tran_partclr ILIKE 'CASH DEPOSIT BY %'  THEN REPLACE(TRAN_PARTCLR, 'CASH DEPOSIT BY ', '')
+            WHEN TRAN_PARTCLR ILIKE 'ATL/%'              THEN 'CASH_TRANSACTION'
+            WHEN TRAN_PARTCLR ILIKE 'ATW/%'              THEN 'CASH_TRANSACTION'
+            WHEN TRAN_PARTCLR ILIKE '%SWEEP%'            THEN 'SWEEP'
+            WHEN TRAN_PARTCLR ILIKE 'PCD/%'              THEN SPLIT_PART(TRAN_PARTCLR, '/', 3)
+            WHEN TRAN_PARTCLR ILIKE 'PG %'               THEN REPLACE(TRAN_PARTCLR, 'PG ', '')
+            WHEN TRAN_PARTCLR ILIKE 'CLG TO %'           THEN REPLACE(TRAN_PARTCLR, 'CLG TO ', '')
+          END AS MERCHANT
+        , CASE
+            WHEN TRAN_PARTCLR ILIKE 'IB: %'      THEN 1
+            WHEN TRAN_PARTCLR ILIKE '%SENTIMPS%' THEN 1
+            ELSE 0
+          END AS TREAT_NUMBERS_FLAG
+    FROM SC_banking_segment_franchise_2
+)
+SELECT *
+    , CASE
+        WHEN TREAT_NUMBERS_FLAG = 1 THEN TRIM(REGEXP_REPLACE(MERCHANT, '[^a-zA-Z\s]', ''))
+        ELSE MERCHANT
+      END AS MERCHANT1
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   (OPTIONAL) attach account-holder name — disabled in source (see B1).
+   ---------------------------------------------------------------------------- */
+-- DROP TABLE IF EXISTS SC_banking_segment_franchise_2_11;
+-- CREATE TABLE SC_banking_segment_franchise_2_11 AS
+-- SELECT a.*, b.prty_name
+-- FROM SC_banking_segment_franchise_2_1 a
+-- LEFT JOIN SC_DISTINCT_NAME1 b ON a.cust_id = b.cust_id;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 3 — SELF-TRANSFER FLAG  (see B1 for details)
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_2_2;
+CREATE TABLE SC_banking_segment_franchise_2_2 AS
+WITH sub AS (
+    SELECT *
+        , DIFFERENCE(merchant1, prty_name) AS sim_score
+    FROM SC_banking_segment_franchise_2_1
+)
+SELECT *
+    , CASE
+        WHEN sim_score >= 4                  THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% OWN %'    THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% SELF %'   THEN 1
+        WHEN TRAN_PARTCLR ILIKE '%/SELF %'   THEN 1
+        WHEN TRAN_PARTCLR ILIKE '%/MYSELF%'  THEN 1
+        WHEN TRAN_PARTCLR ILIKE '% MYSELF %' THEN 1
+        ELSE 0
+      END AS SELF_TRANSFER_FLAG
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   (QA CHECK) — monthly transaction volume by age bucket. Not part of pipeline.
+   ---------------------------------------------------------------------------- */
+SELECT LAST_DAY(TRAN_DATE) AS TRAN_MONTH, diff_open_tranx, COUNT(*) AS COUNT, COUNT(DISTINCT CUST_ID) AS D_CRN
+FROM SC_banking_segment_franchise_2_2
+GROUP BY 1, 2
+ORDER BY tran_month ASC;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 4 — PER-CUSTOMER MONTHLY AGGREGATION (months 4-6)  (see B1 for details)
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_banking_segment_franchise_2_3;
+CREATE TABLE SC_banking_segment_franchise_2_3 AS
+SELECT cust_id
+
+    , sum(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' THEN tran_amt END) AS sum_txn_amount_CR_04M
+    , sum(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' THEN tran_amt END) AS sum_txn_amount_CR_05M
+    , sum(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' THEN tran_amt END) AS sum_txn_amount_CR_06M
+
+    , sum(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_CR_04M
+    , sum(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_CR_05M
+    , sum(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_CR_06M
+
+    , sum(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'D' THEN tran_amt END) AS sum_txn_amount_DR_04M
+    , sum(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'D' THEN tran_amt END) AS sum_txn_amount_DR_05M
+    , sum(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'D' THEN tran_amt END) AS sum_txn_amount_DR_06M
+
+    , sum(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'D' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_DR_04M
+    , sum(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'D' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_DR_05M
+    , sum(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'D' AND SELF_TRANSFER_FLAG = 1 THEN tran_amt END) AS sum_st_amt_DR_06M
+
+    , nullif(count(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' THEN cust_id END), 0) AS txn_count_CR_04M
+    , nullif(count(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' THEN cust_id END), 0) AS txn_count_CR_05M
+    , nullif(count(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' THEN cust_id END), 0) AS txn_count_CR_06M
+
+    , nullif(count(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'D' THEN cust_id END), 0) AS txn_count_DR_04M
+    , nullif(count(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'D' THEN cust_id END), 0) AS txn_count_DR_05M
+    , nullif(count(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'D' THEN cust_id END), 0) AS txn_count_DR_06M
+
+    , max(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' THEN tran_amt END) AS max_txn_amount_CR_04M
+    , max(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' THEN tran_amt END) AS max_txn_amount_CR_05M
+    , max(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' THEN tran_amt END) AS max_txn_amount_CR_06M
+
+    , avg(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS avg_txn_amount_CR_upi_04M
+    , avg(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS avg_txn_amount_CR_upi_05M
+    , avg(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS avg_txn_amount_CR_upi_06M
+
+    , sum(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS sum_txn_amount_CR_UPI_04M
+    , sum(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS sum_txn_amount_CR_UPI_05M
+    , sum(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN tran_amt END) AS sum_txn_amount_CR_UPI_06M
+
+    , nullif(count(CASE WHEN diff_open_tranx = 4 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN cust_id END), 0) AS txn_count_CR_UPI_04M
+    , nullif(count(CASE WHEN diff_open_tranx = 5 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN cust_id END), 0) AS txn_count_CR_UPI_05M
+    , nullif(count(CASE WHEN diff_open_tranx = 6 AND cr_dr_indicator = 'C' AND TRAN_MODE = 'UPI' THEN cust_id END), 0) AS txn_count_CR_UPI_06M
+
+FROM SC_banking_segment_franchise_2_2
+WHERE (cr_dr_indicator = 'D' AND sweep_flag = 0)
+   OR (cr_dr_indicator = 'C' AND loan_tag = 0 AND sweep_flag = 0)
+GROUP BY cust_id;

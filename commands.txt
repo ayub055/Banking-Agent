@@ -1,0 +1,73 @@
+# Commands
+
+Quick reference for generating reports, ingesting xns statements, and building
+the Excel workbook.
+
+---
+
+## 1. Generate a report
+
+### Way A — over the existing project data (`data/xn_d1.csv`)
+```bash
+python main.py --customer 698167220
+```
+
+### Way B — over an xns statement file (auto-converts, then generates)
+`--from-xns` does **both** the extraction and the report generation in one step.
+Accepts an `.xlsx` (with an `xns` sheet) or a `.csv/.tsv` with the xns headers
+(`Date, Description, Amount, Category, Balance`).
+```bash
+python main.py --from-xns /path/to/statement.xlsx --cust-id 8111272729
+```
+
+Balance-dependent sheets (EOD balances, balance-based FCU checks) fill only in
+Way B, because the xns file carries `Balance`.
+
+### Serve it in a browser (add to either way)
+```bash
+python main.py --customer 698167220 --serve --port 8765
+python main.py --from-xns /path/to/statement.xlsx --cust-id 8111272729 --serve --port 8765
+```
+
+**Outputs of a run**
+- `reports/customer_<id>_report_v2.html` — the report (with the workbook embedded; the "Export → Download as Excel" button works straight from the HTML file).
+- `excel_format/bank_statement_analysis.xlsx` — the 12-sheet workbook (refreshed each run).
+- `reports/bank_statement_analysis.xlsx` — a copy next to the HTML.
+
+---
+
+## 2. Extract & save the xns sheet only (no report)
+
+Reads the `xns` sheet out of a workbook and saves it as an `xn_d1`-schema CSV
+(**with `eod_balance`**); leaves `data/xn_d1.csv` untouched.
+```bash
+python -m tools.xns_ingest excel_format/bank_statement_analysis.xlsx --cust-id 8111272729
+```
+
+`--cust-id` is optional — if omitted, the tool auto-reads `Account No.` from the
+workbook's `Analysis` sheet:
+```bash
+python -m tools.xns_ingest excel_format/bank_statement_analysis.xlsx
+```
+
+**Output:** `data/xns_generated/<cust>_xn_d1.csv`
+
+---
+
+## 3. Build the Perfios sample workbook from the source CSVs
+
+Rebuilds `excel_format/bank_statement_analysis.xlsx` from the 12 CSVs in
+`excel_format/` (useful to restore the sample after report runs overwrite it).
+```bash
+python build_excel_format.py
+```
+
+---
+
+## 4. Build the workbook directly from a CSV (no report)
+
+Build the 12-sheet workbook straight from an `xn_d1`-schema CSV (optionally with
+`eod_balance`) without running the pipeline.
+```bash
+python -m tools.statement_workbook data/xns_generated/8111272729_xn_d1.csv --out /tmp/wb.xlsx
+```

@@ -1,0 +1,712 @@
+/* ============================================================================
+   PHASE D — SEGMENTATION & CREDIT-BASED INCOME
+   ----------------------------------------------------------------------------
+   Purpose:
+     Turn the per-customer feature table (from Phase C) into (a) a 6-level
+     behavioural segment and (b) an imputed monthly income figure.
+
+   Input  : SC_BANKING_SEG_FRANCHISE_FEATURES4   (from Phase C)
+   Output : SC_BANKING_SEG_FRANCHISE7            (segments + final_income)
+
+   Overall idea:
+     1. From the monthly credit patterns, count how many months look like
+        "salary", "business", "UPI business", "self transfer", etc.
+     2. Roll those counts into boolean behavioural flags (ACTIVE, EARNER, …).
+     3. Nest the flags into a 6-level segment tree (Depth1 → Depth6).
+     4. Give each segment a multiplier, apply an income formula per rail,
+        stabilise it across the 3 most-recent months, and cap it.
+
+   Steps:
+     Step 1  FRANCHISE   — monthly pattern counts (regular / self / salaried)
+     Step 2  FRANCHISE1  — monthly pattern counts (business / quarterly / UPI)
+     Step 3  FRANCHISE2  — behavioural flags
+     Step 4  FRANCHISE3  — 6-level segmentation (Depth1..Depth6)
+     Step 5  FRANCHISE4  — segment multiplier (profile + consistency points)
+     Step 6  FRANCHISE5  — raw income per rail for the last 3 months
+     Step 7  FRANCHISE6  — 3-month income statistics (median / min)
+     Step 8  FRANCHISE6_1— stabilise & cap -> final_income
+     Step 9  FRANCHISE7  — sanity flags on final_income
+     (plus QA / reporting queries at the end)
+   ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   STEP 1 — MONTHLY PATTERN COUNTS: regular / self-transfer / salaried
+   ----------------------------------------------------------------------------
+   For each of the 12 months, test a condition and SUM the 1/0 results into a
+   "how many months looked like X" count. All ratios guard on the month having
+   a credit (txn_count_CR_..._flag > 0).
+
+     months_credit_more_than_60perc_med
+        months whose credit total sits within +/-40% of the annual median
+        (0.6*med .. 1.4*med) -> "typical income" months. Signals regularity.
+
+     st_credit_more_than_50perc / st_debit_more_than_50perc
+        months where self-transfer amount is >50% of the credit/debit total
+        -> the account is mostly used to shuffle the customer's own money.
+
+     salaried_month_count  (strict) / salaried_month_count1 (loose)
+        months with FEW credits (<10 / <20) AND one credit dominating (>50%
+        of the month's credit) -> looks like a salary deposit.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE AS
+SELECT *
+
+    -- Months whose credit is within +/-40% of the annual median credit.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND sum_txn_amount_CR_01M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_01M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND sum_txn_amount_CR_02M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_02M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND sum_txn_amount_CR_03M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_03M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND sum_txn_amount_CR_04M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_04M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND sum_txn_amount_CR_05M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_05M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND sum_txn_amount_CR_06M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_06M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND sum_txn_amount_CR_07M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_07M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND sum_txn_amount_CR_08M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_08M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND sum_txn_amount_CR_09M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_09M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND sum_txn_amount_CR_10M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_10M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND sum_txn_amount_CR_11M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_11M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND sum_txn_amount_CR_12M >= 0.6 * med_sum_txn_amount_CR_Y AND sum_txn_amount_CR_12M <= 1.4 * med_sum_txn_amount_CR_Y THEN 1 ELSE 0 END
+      AS months_credit_more_than_60perc_med
+
+    -- Months where self-transfers dominate CREDITS (>50% of credit amount).
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND sum_st_amt_CR_01M / sum_txn_amount_CR_01M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND sum_st_amt_CR_02M / sum_txn_amount_CR_02M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND sum_st_amt_CR_03M / sum_txn_amount_CR_03M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND sum_st_amt_CR_04M / sum_txn_amount_CR_04M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND sum_st_amt_CR_05M / sum_txn_amount_CR_05M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND sum_st_amt_CR_06M / sum_txn_amount_CR_06M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND sum_st_amt_CR_07M / sum_txn_amount_CR_07M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND sum_st_amt_CR_08M / sum_txn_amount_CR_08M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND sum_st_amt_CR_09M / sum_txn_amount_CR_09M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND sum_st_amt_CR_10M / sum_txn_amount_CR_10M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND sum_st_amt_CR_11M / sum_txn_amount_CR_11M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND sum_st_amt_CR_12M / sum_txn_amount_CR_12M > 0.5 THEN 1 ELSE 0 END
+      AS st_credit_more_than_50perc
+
+    -- Months where self-transfers dominate DEBITS (>50% of debit amount).
+    , CASE WHEN txn_count_DR_01M_flag > 0 AND sum_st_amt_DR_01M / sum_txn_amount_DR_01M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_02M_flag > 0 AND sum_st_amt_DR_02M / sum_txn_amount_DR_02M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_03M_flag > 0 AND sum_st_amt_DR_03M / sum_txn_amount_DR_03M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_04M_flag > 0 AND sum_st_amt_DR_04M / sum_txn_amount_DR_04M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_05M_flag > 0 AND sum_st_amt_DR_05M / sum_txn_amount_DR_05M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_06M_flag > 0 AND sum_st_amt_DR_06M / sum_txn_amount_DR_06M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_07M_flag > 0 AND sum_st_amt_DR_07M / sum_txn_amount_DR_07M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_08M_flag > 0 AND sum_st_amt_DR_08M / sum_txn_amount_DR_08M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_09M_flag > 0 AND sum_st_amt_DR_09M / sum_txn_amount_DR_09M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_10M_flag > 0 AND sum_st_amt_DR_10M / sum_txn_amount_DR_10M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_11M_flag > 0 AND sum_st_amt_DR_11M / sum_txn_amount_DR_11M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_DR_12M_flag > 0 AND sum_st_amt_DR_12M / sum_txn_amount_DR_12M > 0.5 THEN 1 ELSE 0 END
+      AS st_debit_more_than_50perc
+
+    -- STRICT salaried months: <10 credits AND one credit >50% of the month.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_01M < 10 AND max_txn_amount_CR_01M / sum_txn_amount_CR_01M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND txn_count_CR_02M < 10 AND max_txn_amount_CR_02M / sum_txn_amount_CR_02M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND txn_count_CR_03M < 10 AND max_txn_amount_CR_03M / sum_txn_amount_CR_03M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND txn_count_CR_04M < 10 AND max_txn_amount_CR_04M / sum_txn_amount_CR_04M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND txn_count_CR_05M < 10 AND max_txn_amount_CR_05M / sum_txn_amount_CR_05M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND txn_count_CR_06M < 10 AND max_txn_amount_CR_06M / sum_txn_amount_CR_06M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND txn_count_CR_07M < 10 AND max_txn_amount_CR_07M / sum_txn_amount_CR_07M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND txn_count_CR_08M < 10 AND max_txn_amount_CR_08M / sum_txn_amount_CR_08M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND txn_count_CR_09M < 10 AND max_txn_amount_CR_09M / sum_txn_amount_CR_09M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND txn_count_CR_10M < 10 AND max_txn_amount_CR_10M / sum_txn_amount_CR_10M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND txn_count_CR_11M < 10 AND max_txn_amount_CR_11M / sum_txn_amount_CR_11M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND txn_count_CR_12M < 10 AND max_txn_amount_CR_12M / sum_txn_amount_CR_12M > 0.5 THEN 1 ELSE 0 END
+      AS salaried_month_count
+
+    -- LOOSE salaried months: same idea but allowing up to <20 credits.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_01M < 20 AND max_txn_amount_CR_01M / sum_txn_amount_CR_01M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND txn_count_CR_02M < 20 AND max_txn_amount_CR_02M / sum_txn_amount_CR_02M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND txn_count_CR_03M < 20 AND max_txn_amount_CR_03M / sum_txn_amount_CR_03M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND txn_count_CR_04M < 20 AND max_txn_amount_CR_04M / sum_txn_amount_CR_04M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND txn_count_CR_05M < 20 AND max_txn_amount_CR_05M / sum_txn_amount_CR_05M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND txn_count_CR_06M < 20 AND max_txn_amount_CR_06M / sum_txn_amount_CR_06M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND txn_count_CR_07M < 20 AND max_txn_amount_CR_07M / sum_txn_amount_CR_07M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND txn_count_CR_08M < 20 AND max_txn_amount_CR_08M / sum_txn_amount_CR_08M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND txn_count_CR_09M < 20 AND max_txn_amount_CR_09M / sum_txn_amount_CR_09M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND txn_count_CR_10M < 20 AND max_txn_amount_CR_10M / sum_txn_amount_CR_10M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND txn_count_CR_11M < 20 AND max_txn_amount_CR_11M / sum_txn_amount_CR_11M > 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND txn_count_CR_12M < 20 AND max_txn_amount_CR_12M / sum_txn_amount_CR_12M > 0.5 THEN 1 ELSE 0 END
+      AS salaried_month_count1
+FROM SC_BANKING_SEG_FRANCHISE_FEATURES4;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 2 — MONTHLY PATTERN COUNTS: business / quarterly / UPI mix
+   ----------------------------------------------------------------------------
+     business_month_count
+        months with MANY credits (>=10) AND NO single credit dominating
+        (max/sum <= 50%) -> diversified inflows, looks like a business.
+
+     quarter_month_within_60p / quarter_month_cr_cnt
+        of the 4 quarters, how many sit within +/-40% of the quarterly median
+        (regularity at quarter granularity), and how many quarters had credit.
+
+     upi_month_count / upi_non_upi_month_count / non_upi_month_count
+        classify each month's credit MIX by UPI share (needs >30 UPI credits):
+          UPI share > 60%              -> UPI business month
+          UPI share 40-60%             -> mixed month
+          UPI share <= 40% (& >10 non-UPI credits) -> non-UPI business month
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE1;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE1 AS
+SELECT *
+
+    -- Business-like months: >=10 credits and no single credit >50%.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_01M >= 10 AND max_txn_amount_CR_01M / sum_txn_amount_CR_01M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND txn_count_CR_02M >= 10 AND max_txn_amount_CR_02M / sum_txn_amount_CR_02M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND txn_count_CR_03M >= 10 AND max_txn_amount_CR_03M / sum_txn_amount_CR_03M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND txn_count_CR_04M >= 10 AND max_txn_amount_CR_04M / sum_txn_amount_CR_04M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND txn_count_CR_05M >= 10 AND max_txn_amount_CR_05M / sum_txn_amount_CR_05M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND txn_count_CR_06M >= 10 AND max_txn_amount_CR_06M / sum_txn_amount_CR_06M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND txn_count_CR_07M >= 10 AND max_txn_amount_CR_07M / sum_txn_amount_CR_07M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND txn_count_CR_08M >= 10 AND max_txn_amount_CR_08M / sum_txn_amount_CR_08M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND txn_count_CR_09M >= 10 AND max_txn_amount_CR_09M / sum_txn_amount_CR_09M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND txn_count_CR_10M >= 10 AND max_txn_amount_CR_10M / sum_txn_amount_CR_10M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND txn_count_CR_11M >= 10 AND max_txn_amount_CR_11M / sum_txn_amount_CR_11M <= 0.5 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND txn_count_CR_12M >= 10 AND max_txn_amount_CR_12M / sum_txn_amount_CR_12M <= 0.5 THEN 1 ELSE 0 END
+      AS business_month_count
+
+    -- Quarters within +/-40% of the quarterly median (regular at quarter level).
+    , CASE WHEN sum_txn_amount_CR_01Q > 0 AND sum_txn_amount_CR_01Q >= 0.6 * med_sum_txn_amount_CR_Q AND sum_txn_amount_CR_01Q <= 1.4 * med_sum_txn_amount_CR_Q THEN 1 ELSE 0 END
+    + CASE WHEN sum_txn_amount_CR_02Q > 0 AND sum_txn_amount_CR_02Q >= 0.6 * med_sum_txn_amount_CR_Q AND sum_txn_amount_CR_02Q <= 1.4 * med_sum_txn_amount_CR_Q THEN 1 ELSE 0 END
+    + CASE WHEN sum_txn_amount_CR_03Q > 0 AND sum_txn_amount_CR_03Q >= 0.6 * med_sum_txn_amount_CR_Q AND sum_txn_amount_CR_03Q <= 1.4 * med_sum_txn_amount_CR_Q THEN 1 ELSE 0 END
+    + CASE WHEN sum_txn_amount_CR_04Q > 0 AND sum_txn_amount_CR_04Q >= 0.6 * med_sum_txn_amount_CR_Q AND sum_txn_amount_CR_04Q <= 1.4 * med_sum_txn_amount_CR_Q THEN 1 ELSE 0 END
+      AS quarter_month_within_60p
+
+    -- Number of quarters that had any credit.
+    , CASE WHEN sum_txn_amount_CR_01Q > 0 THEN 1 ELSE 0 END
+    + CASE WHEN sum_txn_amount_CR_02Q > 0 THEN 1 ELSE 0 END
+    + CASE WHEN sum_txn_amount_CR_03Q > 0 THEN 1 ELSE 0 END
+    + CASE WHEN sum_txn_amount_CR_04Q > 0 THEN 1 ELSE 0 END
+      AS quarter_month_cr_cnt
+
+    -- UPI-business months: >30 UPI credits AND UPI share > 60% of credit.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_UPI_01M > 30 AND sum_txn_amount_CR_UPI_01M / sum_txn_amount_CR_01M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND txn_count_CR_UPI_02M > 30 AND sum_txn_amount_CR_UPI_02M / sum_txn_amount_CR_02M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND txn_count_CR_UPI_03M > 30 AND sum_txn_amount_CR_UPI_03M / sum_txn_amount_CR_03M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND txn_count_CR_UPI_04M > 30 AND sum_txn_amount_CR_UPI_04M / sum_txn_amount_CR_04M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND txn_count_CR_UPI_05M > 30 AND sum_txn_amount_CR_UPI_05M / sum_txn_amount_CR_05M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND txn_count_CR_UPI_06M > 30 AND sum_txn_amount_CR_UPI_06M / sum_txn_amount_CR_06M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND txn_count_CR_UPI_07M > 30 AND sum_txn_amount_CR_UPI_07M / sum_txn_amount_CR_07M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND txn_count_CR_UPI_08M > 30 AND sum_txn_amount_CR_UPI_08M / sum_txn_amount_CR_08M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND txn_count_CR_UPI_09M > 30 AND sum_txn_amount_CR_UPI_09M / sum_txn_amount_CR_09M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND txn_count_CR_UPI_10M > 30 AND sum_txn_amount_CR_UPI_10M / sum_txn_amount_CR_10M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND txn_count_CR_UPI_11M > 30 AND sum_txn_amount_CR_UPI_11M / sum_txn_amount_CR_11M > 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND txn_count_CR_UPI_12M > 30 AND sum_txn_amount_CR_UPI_12M / sum_txn_amount_CR_12M > 0.6 THEN 1 ELSE 0 END
+      AS upi_month_count
+
+    -- Mixed months: >30 UPI credits AND UPI share between 40% and 60%.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_UPI_01M > 30 AND sum_txn_amount_CR_UPI_01M / sum_txn_amount_CR_01M > 0.4 AND sum_txn_amount_CR_UPI_01M / sum_txn_amount_CR_01M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND txn_count_CR_UPI_02M > 30 AND sum_txn_amount_CR_UPI_02M / sum_txn_amount_CR_02M > 0.4 AND sum_txn_amount_CR_UPI_02M / sum_txn_amount_CR_02M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND txn_count_CR_UPI_03M > 30 AND sum_txn_amount_CR_UPI_03M / sum_txn_amount_CR_03M > 0.4 AND sum_txn_amount_CR_UPI_03M / sum_txn_amount_CR_03M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND txn_count_CR_UPI_04M > 30 AND sum_txn_amount_CR_UPI_04M / sum_txn_amount_CR_04M > 0.4 AND sum_txn_amount_CR_UPI_04M / sum_txn_amount_CR_04M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND txn_count_CR_UPI_05M > 30 AND sum_txn_amount_CR_UPI_05M / sum_txn_amount_CR_05M > 0.4 AND sum_txn_amount_CR_UPI_05M / sum_txn_amount_CR_05M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND txn_count_CR_UPI_06M > 30 AND sum_txn_amount_CR_UPI_06M / sum_txn_amount_CR_06M > 0.4 AND sum_txn_amount_CR_UPI_06M / sum_txn_amount_CR_06M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND txn_count_CR_UPI_07M > 30 AND sum_txn_amount_CR_UPI_07M / sum_txn_amount_CR_07M > 0.4 AND sum_txn_amount_CR_UPI_07M / sum_txn_amount_CR_07M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND txn_count_CR_UPI_08M > 30 AND sum_txn_amount_CR_UPI_08M / sum_txn_amount_CR_08M > 0.4 AND sum_txn_amount_CR_UPI_08M / sum_txn_amount_CR_08M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND txn_count_CR_UPI_09M > 30 AND sum_txn_amount_CR_UPI_09M / sum_txn_amount_CR_09M > 0.4 AND sum_txn_amount_CR_UPI_09M / sum_txn_amount_CR_09M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND txn_count_CR_UPI_10M > 30 AND sum_txn_amount_CR_UPI_10M / sum_txn_amount_CR_10M > 0.4 AND sum_txn_amount_CR_UPI_10M / sum_txn_amount_CR_10M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND txn_count_CR_UPI_11M > 30 AND sum_txn_amount_CR_UPI_11M / sum_txn_amount_CR_11M > 0.4 AND sum_txn_amount_CR_UPI_11M / sum_txn_amount_CR_11M <= 0.6 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND txn_count_CR_UPI_12M > 30 AND sum_txn_amount_CR_UPI_12M / sum_txn_amount_CR_12M > 0.4 AND sum_txn_amount_CR_UPI_12M / sum_txn_amount_CR_12M <= 0.6 THEN 1 ELSE 0 END
+      AS upi_non_upi_month_count
+
+    -- Non-UPI-business months: >10 NON-UPI credits AND UPI share <= 40%.
+    , CASE WHEN txn_count_CR_01M_flag > 0 AND (txn_count_CR_01M - txn_count_CR_UPI_01M) > 10 AND sum_txn_amount_CR_UPI_01M / sum_txn_amount_CR_01M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_02M_flag > 0 AND (txn_count_CR_02M - txn_count_CR_UPI_02M) > 10 AND sum_txn_amount_CR_UPI_02M / sum_txn_amount_CR_02M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_03M_flag > 0 AND (txn_count_CR_03M - txn_count_CR_UPI_03M) > 10 AND sum_txn_amount_CR_UPI_03M / sum_txn_amount_CR_03M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_04M_flag > 0 AND (txn_count_CR_04M - txn_count_CR_UPI_04M) > 10 AND sum_txn_amount_CR_UPI_04M / sum_txn_amount_CR_04M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_05M_flag > 0 AND (txn_count_CR_05M - txn_count_CR_UPI_05M) > 10 AND sum_txn_amount_CR_UPI_05M / sum_txn_amount_CR_05M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_06M_flag > 0 AND (txn_count_CR_06M - txn_count_CR_UPI_06M) > 10 AND sum_txn_amount_CR_UPI_06M / sum_txn_amount_CR_06M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_07M_flag > 0 AND (txn_count_CR_07M - txn_count_CR_UPI_07M) > 10 AND sum_txn_amount_CR_UPI_07M / sum_txn_amount_CR_07M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_08M_flag > 0 AND (txn_count_CR_08M - txn_count_CR_UPI_08M) > 10 AND sum_txn_amount_CR_UPI_08M / sum_txn_amount_CR_08M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_09M_flag > 0 AND (txn_count_CR_09M - txn_count_CR_UPI_09M) > 10 AND sum_txn_amount_CR_UPI_09M / sum_txn_amount_CR_09M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_10M_flag > 0 AND (txn_count_CR_10M - txn_count_CR_UPI_10M) > 10 AND sum_txn_amount_CR_UPI_10M / sum_txn_amount_CR_10M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_11M_flag > 0 AND (txn_count_CR_11M - txn_count_CR_UPI_11M) > 10 AND sum_txn_amount_CR_UPI_11M / sum_txn_amount_CR_11M <= 0.4 THEN 1 ELSE 0 END
+    + CASE WHEN txn_count_CR_12M_flag > 0 AND (txn_count_CR_12M - txn_count_CR_UPI_12M) > 10 AND sum_txn_amount_CR_UPI_12M / sum_txn_amount_CR_12M <= 0.4 THEN 1 ELSE 0 END
+      AS non_upi_month_count
+FROM SC_BANKING_SEG_FRANCHISE;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 3 — BEHAVIOURAL FLAGS
+   ----------------------------------------------------------------------------
+   Convert the month-counts above into yes/no customer-level flags. Note the
+   "count >= fraction * months_transated_CR" pattern: a behaviour must hold in
+   a large enough SHARE of the customer's active credit months to qualify.
+
+     ACTIVE_FLAG          uses the account at all (streak>=3 OR >=6 months)
+     EARNER_FLAG          meaningful, recurring inflow (median income + >=3 mo)
+     SELF_CR/DR_FLAG      account mostly moves the customer's own money
+     regular_earner_flag  income is both regular (>=70% typical months) and
+                          arriving in a consecutive streak (>=3 months)
+     salaried_month_count_flag / _flag1   salary pattern in >=70% of months
+     business_month_count_flag            business pattern in >=70% of months
+     quarter_earner_flag  regular at quarter level (>=80% quarters in-band)
+     seasonal_earner_flag credit in at least the first two quarters
+     upi/upi_non_upi/non_upi_flag         dominant credit mix in >=70% months
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE2;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE2 AS
+SELECT *
+
+    -- Active: a decent streak OR at least half the year seen.
+    , CASE WHEN consecutive_banking_months >= 3 OR months_transated >= 6 THEN 1 ELSE 0 END AS ACTIVE_FLAG
+
+    -- Earner: median annual/quarterly credit above floor AND >=3 credit months.
+    , CASE WHEN (med_sum_txn_amount_CR_Y > 10000 OR med_sum_txn_amount_CR_Q > 30000) AND months_transated_CR >= 3 THEN 1 ELSE 0 END AS EARNER_FLAG
+
+    -- Self-transfer heavy on the credit / debit side (>=50% of active months).
+    , CASE WHEN st_credit_more_than_50perc >= ROUND(0.5 * months_transated_CR, 0) THEN 1 ELSE 0 END AS SELF_CR_FLAG
+    , CASE WHEN st_debit_more_than_50perc  >= ROUND(0.5 * months_transated_DR, 0) THEN 1 ELSE 0 END AS SELF_DR_FLAG
+
+    -- Regular earner: typical-income in >=70% of months AND >=3-month streak.
+    , CASE WHEN months_credit_more_than_60perc_med >= ROUND(0.7 * months_transated_CR, 0) AND consecutive_banking_months_CR >= 3 THEN 1 ELSE 0 END AS regular_earner_flag
+
+    -- Salaried pattern present in >=70% of active credit months (strict / loose).
+    , CASE WHEN salaried_month_count  >= ROUND(0.7 * months_transated_CR, 0) THEN 1 ELSE 0 END AS salaried_month_count_flag
+    , CASE WHEN salaried_month_count1 >= ROUND(0.7 * months_transated_CR, 0) THEN 1 ELSE 0 END AS salaried_month_count_flag1
+
+    -- Business pattern present in >=70% of active credit months.
+    , CASE WHEN business_month_count >= ROUND(0.7 * months_transated_CR, 0) THEN 1 ELSE 0 END AS business_month_count_flag
+
+    -- Quarterly earner: >=80% of active quarters in-band AND first two quarters have credit.
+    , CASE WHEN quarter_month_within_60p >= ROUND(0.8 * quarter_month_cr_cnt, 0) AND sum_txn_amount_CR_01Q > 0 AND sum_txn_amount_CR_02Q > 0 THEN 1 ELSE 0 END AS quarter_earner_flag
+
+    -- Seasonal earner: credit in at least the first two quarters.
+    , CASE WHEN sum_txn_amount_CR_01Q > 0 AND sum_txn_amount_CR_02Q > 0 THEN 1 ELSE 0 END AS seasonal_earner_flag
+
+    -- Dominant credit-mix flags (each in >=70% of active credit months).
+    , CASE WHEN upi_month_count         >= ROUND(0.7 * months_transated_CR, 0) THEN 1 ELSE 0 END AS upi_month_flag
+    , CASE WHEN upi_non_upi_month_count >= ROUND(0.7 * months_transated_CR, 0) THEN 1 ELSE 0 END AS upi_non_upi_flag
+    , CASE WHEN non_upi_month_count     >= ROUND(0.7 * months_transated_CR, 0) THEN 1 ELSE 0 END AS non_upi_flag
+FROM SC_BANKING_SEG_FRANCHISE1;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 4 — 6-LEVEL SEGMENTATION (Depth1 .. Depth6)
+   ----------------------------------------------------------------------------
+   A nested decision tree that gets progressively more specific. Each deeper
+   Depth reuses the shallower branch and only splits the leaves further:
+
+     Depth1  Active vs Dormant
+     Depth2  (Active) Earner vs No Earner
+     Depth3  (Earner) Majority Self Transfer vs Non self Transfer
+     Depth4  Non-self earners -> Regular / Quarterly / Seasonal / Others;
+             self earners     -> Revolver (also self on debits) / Others
+     Depth5  Regular earners further -> Salaried / Salaried1 / Business / Others
+     Depth6  Business earners further split by credit MIX ->
+             UPI / Mixed / Non-UPI / Others business
+   Depth6 is the leaf label that drives the income multiplier in Step 5.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE3;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE3 AS
+SELECT *
+
+    -- Depth1: is the account used at all?
+    , CASE WHEN ACTIVE_FLAG > 0 THEN '1. Active' ELSE '2. Dormant' END AS Depth1
+
+    -- Depth2: among active, does the customer earn?
+    , CASE
+        WHEN ACTIVE_FLAG > 0 THEN
+            CASE WHEN EARNER_FLAG > 0 THEN '3. Earner' ELSE '4. No Earner' END
+        ELSE '2. Dormant'
+      END AS Depth2
+
+    -- Depth3: among earners, is it mostly self-transfer money?
+    , CASE
+        WHEN ACTIVE_FLAG > 0 THEN
+            CASE
+                WHEN EARNER_FLAG > 0 THEN
+                    CASE WHEN SELF_CR_FLAG > 0 THEN '5. Majority Self Transfer' ELSE '6. Non self Transfer' END
+                ELSE '4. No Earner'
+            END
+        ELSE '2. Dormant'
+      END AS Depth3
+
+    -- Depth4: earning shape (regular/quarterly/seasonal) or revolver/other.
+    , CASE
+        WHEN ACTIVE_FLAG > 0 THEN
+            CASE
+                WHEN EARNER_FLAG > 0 THEN
+                    CASE
+                        WHEN SELF_CR_FLAG > 0 THEN
+                            CASE WHEN SELF_DR_FLAG > 0 THEN '11. Revolver' ELSE '12. Others' END
+                        ELSE
+                            CASE
+                                WHEN regular_earner_flag  > 0 THEN '7. Regular Earner'
+                                WHEN quarter_earner_flag  > 0 THEN '8. Quarterly Earner'
+                                WHEN seasonal_earner_flag > 0 THEN '9. Seasonal Earner'
+                                ELSE '10. Others'
+                            END
+                    END
+                ELSE '4. No Earner'
+            END
+        ELSE '2. Dormant'
+      END AS Depth4
+
+    -- Depth5: regular earners split into Salaried / Salaried1 / Business / Others.
+    , CASE
+        WHEN ACTIVE_FLAG > 0 THEN
+            CASE
+                WHEN EARNER_FLAG > 0 THEN
+                    CASE
+                        WHEN SELF_CR_FLAG > 0 THEN
+                            CASE WHEN SELF_DR_FLAG > 0 THEN '11. Revolver' ELSE '12. Others' END
+                        ELSE
+                            CASE
+                                WHEN regular_earner_flag > 0 THEN
+                                    CASE
+                                        WHEN salaried_month_count_flag  > 0 THEN '13. Salaried Profile'
+                                        WHEN salaried_month_count_flag1 > 0 THEN '14. Salaried Profile1'
+                                        WHEN business_month_count_flag  > 0 THEN '15. Business Profile'
+                                        ELSE '16. Others'
+                                    END
+                                WHEN quarter_earner_flag  > 0 THEN '8. Quarterly Earner'
+                                WHEN seasonal_earner_flag > 0 THEN '9. Seasonal Earner'
+                                ELSE '10. Others'
+                            END
+                    END
+                ELSE '4. No Earner'
+            END
+        ELSE '2. Dormant'
+      END AS Depth5
+
+    -- Depth6: business earners further split by credit MIX (UPI/Mixed/Non-UPI).
+    , CASE
+        WHEN ACTIVE_FLAG > 0 THEN
+            CASE
+                WHEN EARNER_FLAG > 0 THEN
+                    CASE
+                        WHEN SELF_CR_FLAG > 0 THEN
+                            CASE WHEN SELF_DR_FLAG > 0 THEN '11. Revolver' ELSE '12. Others' END
+                        ELSE
+                            CASE
+                                WHEN regular_earner_flag > 0 THEN
+                                    CASE
+                                        WHEN salaried_month_count_flag  > 0 THEN '13. Salaried Profile'
+                                        WHEN salaried_month_count_flag1 > 0 THEN '14. Salaried Profile1'
+                                        WHEN business_month_count_flag  > 0 THEN
+                                            CASE
+                                                WHEN upi_month_flag   > 0 THEN '17. UPI Business'
+                                                WHEN upi_non_upi_flag > 0 THEN '18. Mixed Business'
+                                                WHEN non_upi_flag     > 0 THEN '19. Non UPI Business'
+                                                ELSE '20. Others'
+                                            END
+                                        ELSE '16. Others'
+                                    END
+                                WHEN quarter_earner_flag  > 0 THEN '8. Quarterly Earner'
+                                WHEN seasonal_earner_flag > 0 THEN '9. Seasonal Earner'
+                                ELSE '10. Others'
+                            END
+                    END
+                ELSE '4. No Earner'
+            END
+        ELSE '2. Dormant'
+      END AS Depth6
+FROM SC_BANKING_SEG_FRANCHISE2;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 5 — SEGMENT MULTIPLIER
+   ----------------------------------------------------------------------------
+   Each Depth6 segment gets a "multiplier" (fraction of gross credit treated as
+   income). It is built from up to three point components:
+
+     profile_point   base weight by segment (Salaried highest, business/quarterly
+                     lowest). Values below reflect the 25-Aug-2025 revision.
+     cdr_points      reward for sustained positive net cash-flow (uses the
+                     consecutive & total positive-CR-DR-month features).
+     mean_med_point  reward when the annual mean & median credit are close
+                     (i.e. income is smooth, not lumpy).
+     mean_med_point1 quarterly analogue (kept for reference; the live multiplier
+                     for quarterly/seasonal uses profile_point only).
+
+   Final multiplier:
+     Salaried segments (13,14) : profile_point + cdr_points + mean_med_point
+     All other scored segments : profile_point only
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE4;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE4 AS
+WITH sub AS (
+    SELECT *
+        -- Base weight per segment (live values, revised 25-Aug-2025).
+        , CASE
+            WHEN depth6 = '13. Salaried Profile'  THEN 0.5
+            WHEN depth6 = '14. Salaried Profile1' THEN 0.4
+            WHEN depth6 = '16. Others'            THEN 0.10
+            WHEN depth6 = '17. UPI Business'      THEN 0.10
+            WHEN depth6 = '18. Mixed Business'    THEN 0.10
+            WHEN depth6 = '19. Non UPI Business'  THEN 0.10
+            WHEN depth6 = '20. Others'            THEN 0.10
+            WHEN depth6 = '8. Quarterly Earner'   THEN 0.10
+            WHEN depth6 = '9. Seasonal Earner'    THEN 0.10
+            ELSE NULL
+          END AS profile_point
+
+        -- Positive-cash-flow reward, from (consecutive, total) positive months.
+        , CASE
+            WHEN conse_cr_minus_dr_pos_months <= 0 AND cr_minus_dr_pos_months <= 0 THEN 0
+            WHEN conse_cr_minus_dr_pos_months <= 0 AND cr_minus_dr_pos_months <= 2 THEN 0
+            WHEN conse_cr_minus_dr_pos_months <= 0 AND cr_minus_dr_pos_months <= 5 THEN 0.025
+            WHEN conse_cr_minus_dr_pos_months <= 0 AND cr_minus_dr_pos_months >  5 THEN 0.05
+            WHEN conse_cr_minus_dr_pos_months <= 2 AND cr_minus_dr_pos_months <= 2 THEN 0.05
+            WHEN conse_cr_minus_dr_pos_months <= 2 AND cr_minus_dr_pos_months <= 5 THEN 0.05
+            WHEN conse_cr_minus_dr_pos_months <= 2 AND cr_minus_dr_pos_months >  5 THEN 0.1
+            WHEN conse_cr_minus_dr_pos_months <= 5 AND cr_minus_dr_pos_months <= 5 THEN 0.1
+            WHEN conse_cr_minus_dr_pos_months <= 5 AND cr_minus_dr_pos_months >  5 THEN 0.15
+            WHEN conse_cr_minus_dr_pos_months >  5 AND cr_minus_dr_pos_months >  5 THEN 0.2
+            ELSE 0
+          END AS cdr_points
+
+        -- Annual smoothness reward: smaller mean-vs-median gap => more points.
+        , CASE
+            WHEN months_transated_CR > 0 AND abs((med_sum_txn_amount_CR_Y - mean_sum_txn_amount_CR_Y) / med_sum_txn_amount_CR_Y) < 0.1 THEN 0.1
+            WHEN months_transated_CR > 0 AND abs((med_sum_txn_amount_CR_Y - mean_sum_txn_amount_CR_Y) / med_sum_txn_amount_CR_Y) < 0.2 THEN 0.05
+            WHEN months_transated_CR > 0 AND abs((med_sum_txn_amount_CR_Y - mean_sum_txn_amount_CR_Y) / med_sum_txn_amount_CR_Y) < 0.4 THEN 0.025
+            ELSE 0
+          END AS mean_med_point
+
+        -- Quarterly smoothness reward (kept available for the quarterly formula).
+        , CASE
+            WHEN med_sum_txn_amount_CR_Q > 0 THEN
+                CASE
+                    WHEN abs((med_sum_txn_amount_CR_Q - mean_sum_txn_amount_CR_Q) / med_sum_txn_amount_CR_Q) < 0.1 THEN 0.05
+                    WHEN abs((med_sum_txn_amount_CR_Q - mean_sum_txn_amount_CR_Q) / med_sum_txn_amount_CR_Q) < 0.2 THEN 0.03
+                    WHEN abs((med_sum_txn_amount_CR_Q - mean_sum_txn_amount_CR_Q) / med_sum_txn_amount_CR_Q) < 0.4 THEN 0.02
+                END
+            ELSE 0
+          END AS mean_med_point1
+    FROM SC_BANKING_SEG_FRANCHISE3
+)
+SELECT *
+    -- Live multiplier (revised 25-Aug-2025):
+    --   salaried -> profile + cash-flow + smoothness;  everything else -> profile only.
+    , CASE
+        WHEN depth6 IN ('13. Salaried Profile', '14. Salaried Profile1')
+            THEN coalesce(profile_point, 0) + coalesce(cdr_points, 0) + coalesce(mean_med_point, 0)
+        WHEN depth6 IN ('8. Quarterly Earner', '9. Seasonal Earner', '16. Others', '17. UPI Business', '18. Mixed Business', '19. Non UPI Business', '20. Others')
+            THEN coalesce(profile_point, 0)
+        ELSE NULL
+      END AS multiplier
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 6 — RAW INCOME PER RAIL (last 3 months)
+   ----------------------------------------------------------------------------
+   Compute a candidate income for each of the 3 most-recent months under four
+   different assumptions about which credits are income. Each formula weights a
+   "core" component at the full multiplier and the "rest" at a reduced rate:
+
+     sal_income     salary view: the biggest credit is core; the rest at 1/4.
+     upi_income     UPI-earner view: UPI credit core; non-UPI at 1/2.
+     non_upi_income non-UPI-earner view: non-UPI core; UPI at 1/2.
+     other_income   flat view: whole credit at the multiplier.
+     non_reg_income quarterly view: whole quarter's credit at the multiplier
+                    (used later for quarterly/seasonal earners).
+   Only the 3 latest months (01M-03M) / 3 latest quarters (01Q-03Q) are used —
+   the most recent behaviour best reflects current income.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE5;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE5 AS
+SELECT *
+    -- Salary view: dominant credit at full weight, remainder at quarter weight.
+    , max_txn_amount_CR_01M * multiplier + (sum_txn_amount_CR_01M - max_txn_amount_CR_01M) * (multiplier / 4) AS sal_income_01M
+    , max_txn_amount_CR_02M * multiplier + (sum_txn_amount_CR_02M - max_txn_amount_CR_02M) * (multiplier / 4) AS sal_income_02M
+    , max_txn_amount_CR_03M * multiplier + (sum_txn_amount_CR_03M - max_txn_amount_CR_03M) * (multiplier / 4) AS sal_income_03M
+
+    -- UPI view: UPI credit at full weight, non-UPI remainder at half weight.
+    , sum_txn_amount_CR_UPI_01M * multiplier + (sum_txn_amount_CR_01M - sum_txn_amount_CR_UPI_01M) * (multiplier / 2) AS upi_income_01M
+    , sum_txn_amount_CR_UPI_02M * multiplier + (sum_txn_amount_CR_02M - sum_txn_amount_CR_UPI_02M) * (multiplier / 2) AS upi_income_02M
+    , sum_txn_amount_CR_UPI_03M * multiplier + (sum_txn_amount_CR_03M - sum_txn_amount_CR_UPI_03M) * (multiplier / 2) AS upi_income_03M
+
+    -- Non-UPI view: non-UPI credit at full weight, UPI at half weight.
+    , sum_txn_amount_CR_UPI_01M * (multiplier / 2) + (sum_txn_amount_CR_01M - sum_txn_amount_CR_UPI_01M) * (multiplier) AS non_upi_income_01M
+    , sum_txn_amount_CR_UPI_02M * (multiplier / 2) + (sum_txn_amount_CR_02M - sum_txn_amount_CR_UPI_02M) * (multiplier) AS non_upi_income_02M
+    , sum_txn_amount_CR_UPI_03M * (multiplier / 2) + (sum_txn_amount_CR_03M - sum_txn_amount_CR_UPI_03M) * (multiplier) AS non_upi_income_03M
+
+    -- Flat view: whole month's credit at the multiplier.
+    , (sum_txn_amount_CR_01M) * (multiplier) AS other_income_01M
+    , (sum_txn_amount_CR_02M) * (multiplier) AS other_income_02M
+    , (sum_txn_amount_CR_03M) * (multiplier) AS other_income_03M
+
+    -- Quarterly view: whole quarter's credit at the multiplier.
+    , (sum_txn_amount_CR_01Q) * (multiplier) AS non_reg_income_01Q
+    , (sum_txn_amount_CR_02Q) * (multiplier) AS non_reg_income_02Q
+    , (sum_txn_amount_CR_03Q) * (multiplier) AS non_reg_income_03Q
+FROM SC_BANKING_SEG_FRANCHISE4;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 7 — 3-MONTH INCOME STATISTICS
+   ----------------------------------------------------------------------------
+   For each income view, summarise its 3 monthly (or quarterly) values and pull
+   out the MEDIAN and MIN. Median is the central estimate; min is the
+   conservative fallback used in Step 8 when the months disagree.
+   (Snowflake stats_summary3 -> JSON; DuckDB port: list_aggregate median/min.)
+   Also keeps med_total_credit_01Q = median of the 3 latest monthly credit
+   totals, used as the income cap reference in Step 8.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE6;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE6 AS
+WITH sub AS (
+    SELECT *
+        , stats_summary3(sal_income_01M, sal_income_02M, sal_income_03M)                 AS sal_income_dict
+        , stats_summary3(upi_income_01M, upi_income_02M, upi_income_03M)                 AS upi_income_dict
+        , stats_summary3(non_upi_income_01M, non_upi_income_02M, non_upi_income_03M)     AS non_upi_income_dict
+        , stats_summary3(other_income_01M, other_income_02M, other_income_03M)           AS other_income_dict
+        , stats_summary3(sum_txn_amount_CR_01M, sum_txn_amount_CR_02M, sum_txn_amount_CR_03M) AS sum_txn_dict
+        , stats_summary3(non_reg_income_01Q, non_reg_income_02Q, non_reg_income_03Q)     AS non_reg_income_dict
+    FROM SC_BANKING_SEG_FRANCHISE5
+)
+SELECT *
+    , json_extract_path_text(sal_income_dict, 'median')::float     AS med_sal_income
+    , json_extract_path_text(sal_income_dict, 'min')::float        AS min_sal_income
+    , json_extract_path_text(upi_income_dict, 'median')::float     AS med_upi_income
+    , json_extract_path_text(upi_income_dict, 'min')::float        AS min_upi_income
+    , json_extract_path_text(non_upi_income_dict, 'median')::float AS med_non_upi_income
+    , json_extract_path_text(non_upi_income_dict, 'min')::float    AS min_non_upi_income
+    , json_extract_path_text(other_income_dict, 'median')::float   AS med_other_income
+    , json_extract_path_text(other_income_dict, 'min')::float      AS min_other_income
+    , json_extract_path_text(non_reg_income_dict, 'median')::float AS med_non_reg_income
+    , json_extract_path_text(non_reg_income_dict, 'min')::float    AS min_non_reg_income
+    , json_extract_path_text(sum_txn_dict, 'median')::float        AS med_total_credit_01Q
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 8 — STABILISE & CAP -> final_income
+   ----------------------------------------------------------------------------
+   Two moves:
+
+   (a) Stabilise each income view (sal/upi/non_upi/other/non_reg):
+       if all 3 months are within +/-20% of the median -> trust the MEDIAN;
+       otherwise the months disagree -> fall back to the conservative MIN.
+
+   (b) Pick the view that matches the segment and CAP it so imputed income can
+       never exceed a sensible fraction of actual credit:
+         13. Salaried         -> sal_income,     cap 80% of median monthly credit
+         14. Salaried1        -> sal_income,     cap 75%
+         17/18 UPI/Mixed Biz  -> upi_income,     cap 50%
+         19. Non-UPI Business -> non_upi_income, cap 50%
+         16/20 Others         -> other_income,   cap 50%
+         8/9 Quarterly/Season -> non_reg_income, cap 50% of median QUARTER,
+                                 then divide by 3 to express per-month.
+   The result is final_income (NULL for unscored segments).
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE6_1;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE6_1 AS
+WITH sub AS (
+    SELECT *
+        -- Stabilised salary income.
+        , CASE WHEN med_sal_income > 0 THEN
+              CASE WHEN ABS((med_sal_income - sal_income_01M) / med_sal_income) < 0.2
+                    AND ABS((med_sal_income - sal_income_02M) / med_sal_income) < 0.2
+                    AND ABS((med_sal_income - sal_income_03M) / med_sal_income) < 0.2 THEN med_sal_income
+                   ELSE min_sal_income END
+          ELSE NULL END AS sal_income
+
+        -- Stabilised UPI income.
+        , CASE WHEN med_upi_income > 0 THEN
+              CASE WHEN ABS((med_upi_income - upi_income_01M) / med_upi_income) < 0.2
+                    AND ABS((med_upi_income - upi_income_02M) / med_upi_income) < 0.2
+                    AND ABS((med_upi_income - upi_income_03M) / med_upi_income) < 0.2 THEN med_upi_income
+                   ELSE min_upi_income END
+          ELSE NULL END AS upi_income
+
+        -- Stabilised non-UPI income.
+        , CASE WHEN med_non_upi_income > 0 THEN
+              CASE WHEN ABS((med_non_upi_income - non_upi_income_01M) / med_non_upi_income) < 0.2
+                    AND ABS((med_non_upi_income - non_upi_income_02M) / med_non_upi_income) < 0.2
+                    AND ABS((med_non_upi_income - non_upi_income_03M) / med_non_upi_income) < 0.2 THEN med_non_upi_income
+                   ELSE min_non_upi_income END
+          ELSE NULL END AS non_upi_income
+
+        -- Stabilised flat/other income.
+        , CASE WHEN med_other_income > 0 THEN
+              CASE WHEN ABS((med_other_income - other_income_01M) / med_other_income) < 0.2
+                    AND ABS((med_other_income - other_income_02M) / med_other_income) < 0.2
+                    AND ABS((med_other_income - other_income_03M) / med_other_income) < 0.2 THEN med_other_income
+                   ELSE min_other_income END
+          ELSE NULL END AS other_income
+
+        -- Stabilised quarterly income.
+        , CASE WHEN med_non_reg_income > 0 THEN
+              CASE WHEN ABS((med_non_reg_income - non_reg_income_01Q) / med_non_reg_income) < 0.2
+                    AND ABS((med_non_reg_income - non_reg_income_02Q) / med_non_reg_income) < 0.2
+                    AND ABS((med_non_reg_income - non_reg_income_03Q) / med_non_reg_income) < 0.2 THEN med_non_reg_income
+                   ELSE min_non_reg_income END
+          ELSE NULL END AS non_reg_income
+    FROM SC_BANKING_SEG_FRANCHISE6
+)
+SELECT *
+    -- Select the segment's income view and cap it against actual credit.
+    , CASE
+        WHEN depth6 = '13. Salaried Profile' THEN
+            CASE WHEN sal_income < med_total_credit_01Q * 0.8 THEN sal_income ELSE med_total_credit_01Q * 0.8 END
+        WHEN depth6 = '14. Salaried Profile1' THEN
+            CASE WHEN sal_income < med_total_credit_01Q * 0.75 THEN sal_income ELSE med_total_credit_01Q * 0.75 END
+        WHEN depth6 IN ('17. UPI Business', '18. Mixed Business') THEN
+            CASE WHEN upi_income < med_total_credit_01Q * 0.5 THEN upi_income ELSE med_total_credit_01Q * 0.5 END
+        WHEN depth6 IN ('19. Non UPI Business') THEN
+            CASE WHEN non_upi_income < med_total_credit_01Q * 0.5 THEN non_upi_income ELSE med_total_credit_01Q * 0.5 END
+        WHEN depth6 IN ('20. Others', '16. Others') THEN
+            CASE WHEN other_income < med_total_credit_01Q * 0.5 THEN other_income ELSE med_total_credit_01Q * 0.5 END
+        WHEN depth6 IN ('8. Quarterly Earner', '9. Seasonal Earner') THEN
+            CASE WHEN non_reg_income < med_sum_txn_amount_CR_Q * 0.5 THEN non_reg_income / 3 ELSE (med_sum_txn_amount_CR_Q * 0.5) / 3 END
+        ELSE NULL
+      END AS final_income
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 9 — SANITY FLAGS ON final_income
+   ----------------------------------------------------------------------------
+   For the 3 latest months, flag whether the actual monthly credit exceeded the
+   imputed income (a basic plausibility check), and sum the three into
+   flag_3m_sum (0-3). Used downstream to gate high-confidence rows
+   (e.g. flag_3m_sum = 3 AND final_income > 15000).
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE7;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE7 AS
+WITH sub AS (
+    SELECT *
+        , CASE WHEN sum_txn_amount_cr_01m > final_income THEN 1 ELSE 0 END AS sum_txn_amount_cr_01m_flag
+        , CASE WHEN sum_txn_amount_cr_02m > final_income THEN 1 ELSE 0 END AS sum_txn_amount_cr_02m_flag
+        , CASE WHEN sum_txn_amount_cr_03m > final_income THEN 1 ELSE 0 END AS sum_txn_amount_cr_03m_flag
+    FROM SC_BANKING_SEG_FRANCHISE6_1
+)
+SELECT *
+    , sum_txn_amount_cr_01m_flag + sum_txn_amount_cr_02m_flag + sum_txn_amount_cr_03m_flag AS flag_3m_sum
+FROM sub;
+
+
+/* ----------------------------------------------------------------------------
+   QA / REPORTING QUERIES (not part of the pipeline)
+   ----------------------------------------------------------------------------
+   Population counts and a segment x income-band distribution used to eyeball
+   the run. INCOME_BAND buckets final_income into <15K … >=1.5L.
+   ---------------------------------------------------------------------------- */
+-- Population size and high-confidence high-income count.
+SELECT COUNT(*), COUNT(DISTINCT CUST_ID) FROM SC_BANKING_SEG_FRANCHISE7;
+
+SELECT COUNT(*), COUNT(DISTINCT CUST_ID) FROM SC_BANKING_SEG_FRANCHISE7
+WHERE flag_3m_sum = 3 AND final_income > 15000;
+
+-- Segment x income-band distribution.
+SELECT
+      Depth1, Depth2, Depth3, Depth4, Depth5, Depth6
+    , CASE
+        WHEN a.final_income IS NULL                         THEN ''
+        WHEN a.final_income > 0 AND a.final_income < 15000  THEN 'A. <15K'
+        WHEN a.final_income > 0 AND a.final_income < 25000  THEN 'B. <25K'
+        WHEN a.final_income > 0 AND a.final_income < 50000  THEN 'C. <50K'
+        WHEN a.final_income > 0 AND a.final_income < 75000  THEN 'D. <75K'
+        WHEN a.final_income > 0 AND a.final_income < 100000 THEN 'F. <1L'
+        WHEN a.final_income > 0 AND a.final_income < 150000 THEN 'G. <1.5L'
+        WHEN a.final_income >= 150000                       THEN 'H. >=1.5L'
+        ELSE ''
+      END AS INCOME_BAND
+    , COUNT(*) AS COUNT
+FROM SC_BANKING_SEG_FRANCHISE7 a
+GROUP BY Depth1, Depth2, Depth3, Depth4, Depth5, Depth6, income_band;

@@ -1,0 +1,447 @@
+/* ============================================================================
+   PHASE C — FEATURE ENGINEERING
+   ----------------------------------------------------------------------------
+   Purpose:
+     Stitch the four quarterly aggregation outputs (B1-B4) into a single
+     one-row-per-customer feature table spanning all 12 months, then derive
+     the higher-level features the segmentation logic (D) needs.
+
+   Inputs  : SC_banking_segment_franchise_{1,2,3,4}_3   (from B1-B4)
+   Output  : SC_BANKING_SEG_FRANCHISE_FEATURES4         (feeds Phase D)
+
+   Steps:
+     Step 1  SC_DID  — master list of every customer seen in any quarter
+     Step 2  FEATURES  — wide join: all 12 months of raw metrics per customer
+     Step 3  FEATURES1 — derived per-month features (totals, activity flags,
+                         quarterly sums, credit-minus-debit)
+     Step 4  FEATURES2 — activity counts, consecutive-month runs, +ve CR-DR runs
+     Step 5  FEATURES3 — annual/quarterly credit statistics (median & mean)
+     Step 6  FEATURES4 — final trimmed column set passed to Phase D
+   ============================================================================ */
+
+
+/* ----------------------------------------------------------------------------
+   STEP 1 — MASTER CUSTOMER LIST (SC_DID)
+   ----------------------------------------------------------------------------
+   Each quarter only contains customers who transacted in that quarter, so no
+   single B-output has everyone. UNION the distinct CUST_IDs from all four to
+   get the complete population that we then LEFT JOIN metrics onto.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_DID;
+CREATE TABLE SC_DID AS
+SELECT DISTINCT CUST_ID FROM SC_banking_segment_franchise_1_3
+UNION
+SELECT DISTINCT CUST_ID FROM SC_banking_segment_franchise_2_3
+UNION
+SELECT DISTINCT CUST_ID FROM SC_banking_segment_franchise_3_3
+UNION
+SELECT DISTINCT CUST_ID FROM SC_banking_segment_franchise_4_3;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 2 — WIDE FEATURE TABLE (12 months side by side)
+   ----------------------------------------------------------------------------
+   LEFT JOIN the four quarterly outputs onto the master customer list so every
+   customer gets one row carrying all 12 monthly columns for each metric family:
+     sum_txn_amount_CR / DR      monthly credit / debit totals
+     sum_st_amt_CR / DR          self-transfer portion of those
+     txn_count_CR / DR           monthly credit / debit counts
+     max_txn_amount_CR           largest single credit that month
+     avg/sum_txn_amount_CR_UPI   UPI credit average / total
+     txn_count_CR_UPI            UPI credit count
+   Months not present for a customer come through as NULL (no activity).
+   (avg_5days_bal_* balance columns are commented out — balance feed not used.)
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE_FEATURES;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE_FEATURES AS
+SELECT A.CUST_ID
+    -- Monthly total CREDIT amount (01M..12M)
+    , sum_txn_amount_CR_01M, sum_txn_amount_CR_02M, sum_txn_amount_CR_03M
+    , sum_txn_amount_CR_04M, sum_txn_amount_CR_05M, sum_txn_amount_CR_06M
+    , sum_txn_amount_CR_07M, sum_txn_amount_CR_08M, sum_txn_amount_CR_09M
+    , sum_txn_amount_CR_10M, sum_txn_amount_CR_11M, sum_txn_amount_CR_12M
+    -- Monthly self-transfer CREDIT amount
+    , sum_st_amt_CR_01M, sum_st_amt_CR_02M, sum_st_amt_CR_03M
+    , sum_st_amt_CR_04M, sum_st_amt_CR_05M, sum_st_amt_CR_06M
+    , sum_st_amt_CR_07M, sum_st_amt_CR_08M, sum_st_amt_CR_09M
+    , sum_st_amt_CR_10M, sum_st_amt_CR_11M, sum_st_amt_CR_12M
+    -- Monthly total DEBIT amount
+    , sum_txn_amount_DR_01M, sum_txn_amount_DR_02M, sum_txn_amount_DR_03M
+    , sum_txn_amount_DR_04M, sum_txn_amount_DR_05M, sum_txn_amount_DR_06M
+    , sum_txn_amount_DR_07M, sum_txn_amount_DR_08M, sum_txn_amount_DR_09M
+    , sum_txn_amount_DR_10M, sum_txn_amount_DR_11M, sum_txn_amount_DR_12M
+    -- Monthly self-transfer DEBIT amount
+    , sum_st_amt_DR_01M, sum_st_amt_DR_02M, sum_st_amt_DR_03M
+    , sum_st_amt_DR_04M, sum_st_amt_DR_05M, sum_st_amt_DR_06M
+    , sum_st_amt_DR_07M, sum_st_amt_DR_08M, sum_st_amt_DR_09M
+    , sum_st_amt_DR_10M, sum_st_amt_DR_11M, sum_st_amt_DR_12M
+    -- Monthly CREDIT / DEBIT counts
+    , txn_count_CR_01M, txn_count_CR_02M, txn_count_CR_03M
+    , txn_count_CR_04M, txn_count_CR_05M, txn_count_CR_06M
+    , txn_count_CR_07M, txn_count_CR_08M, txn_count_CR_09M
+    , txn_count_CR_10M, txn_count_CR_11M, txn_count_CR_12M
+    , txn_count_DR_01M, txn_count_DR_02M, txn_count_DR_03M
+    , txn_count_DR_04M, txn_count_DR_05M, txn_count_DR_06M
+    , txn_count_DR_07M, txn_count_DR_08M, txn_count_DR_09M
+    , txn_count_DR_10M, txn_count_DR_11M, txn_count_DR_12M
+    -- Monthly largest single CREDIT
+    , max_txn_amount_CR_01M, max_txn_amount_CR_02M, max_txn_amount_CR_03M
+    , max_txn_amount_CR_04M, max_txn_amount_CR_05M, max_txn_amount_CR_06M
+    , max_txn_amount_CR_07M, max_txn_amount_CR_08M, max_txn_amount_CR_09M
+    , max_txn_amount_CR_10M, max_txn_amount_CR_11M, max_txn_amount_CR_12M
+    -- Monthly average UPI-credit ticket
+    , avg_txn_amount_CR_upi_01M, avg_txn_amount_CR_upi_02M, avg_txn_amount_CR_upi_03M
+    , avg_txn_amount_CR_upi_04M, avg_txn_amount_CR_upi_05M, avg_txn_amount_CR_upi_06M
+    , avg_txn_amount_CR_upi_07M, avg_txn_amount_CR_upi_08M, avg_txn_amount_CR_upi_09M
+    , avg_txn_amount_CR_upi_10M, avg_txn_amount_CR_upi_11M, avg_txn_amount_CR_upi_12M
+    -- Monthly total UPI-credit amount
+    , sum_txn_amount_CR_UPI_01M, sum_txn_amount_CR_UPI_02M, sum_txn_amount_CR_UPI_03M
+    , sum_txn_amount_CR_UPI_04M, sum_txn_amount_CR_UPI_05M, sum_txn_amount_CR_UPI_06M
+    , sum_txn_amount_CR_UPI_07M, sum_txn_amount_CR_UPI_08M, sum_txn_amount_CR_UPI_09M
+    , sum_txn_amount_CR_UPI_10M, sum_txn_amount_CR_UPI_11M, sum_txn_amount_CR_UPI_12M
+    -- Monthly UPI-credit count
+    , txn_count_CR_UPI_01M, txn_count_CR_UPI_02M, txn_count_CR_UPI_03M
+    , txn_count_CR_UPI_04M, txn_count_CR_UPI_05M, txn_count_CR_UPI_06M
+    , txn_count_CR_UPI_07M, txn_count_CR_UPI_08M, txn_count_CR_UPI_09M
+    , txn_count_CR_UPI_10M, txn_count_CR_UPI_11M, txn_count_CR_UPI_12M
+    -- (balance feed intentionally disabled)
+    -- , avg_5days_bal_01M ... avg_5days_bal_12M
+FROM SC_DID A
+LEFT JOIN SC_banking_segment_franchise_1_3 B ON A.CUST_ID = B.CUST_ID   -- months 1-3
+LEFT JOIN SC_banking_segment_franchise_2_3 C ON A.CUST_ID = C.CUST_ID   -- months 4-6
+LEFT JOIN SC_banking_segment_franchise_3_3 D ON A.CUST_ID = D.CUST_ID   -- months 7-9
+LEFT JOIN SC_banking_segment_franchise_4_3 E ON A.CUST_ID = E.CUST_ID;  -- months 10-12
+-- LEFT JOIN SC_BANKING_SEG_BAL3 F ON A.CUST_ID = F.CUST_ID;  (balance feed, disabled)
+
+
+/* ----------------------------------------------------------------------------
+   STEP 3 — DERIVED PER-MONTH FEATURES (FEATURES1)
+   ----------------------------------------------------------------------------
+   Add, for each month:
+     txn_count_0XM          total activity = CR count + DR count (NULLs -> 0)
+     txn_count_CR/DR_0XM_flag  1 if the customer had any credit/debit that month
+     txn_count_0XM_flag     1 if any activity at all that month
+     sum_txn_amount_CR_0XQ  quarterly credit totals (Q1=M1-3 … Q4=M10-12)
+     CR_MINUS_DR_0XM        monthly net flow (credit total minus debit total)
+   The *_flag columns are the building blocks for the month-count features in
+   Step 4; CR_MINUS_DR is used for the "positive cash-flow months" features.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE_FEATURES1;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE_FEATURES1 AS
+SELECT *
+    -- Total monthly activity count (credit + debit).
+    , coalesce(txn_count_CR_01M, 0) + coalesce(txn_count_DR_01M, 0) AS txn_count_01M
+    , coalesce(txn_count_CR_02M, 0) + coalesce(txn_count_DR_02M, 0) AS txn_count_02M
+    , coalesce(txn_count_CR_03M, 0) + coalesce(txn_count_DR_03M, 0) AS txn_count_03M
+    , coalesce(txn_count_CR_04M, 0) + coalesce(txn_count_DR_04M, 0) AS txn_count_04M
+    , coalesce(txn_count_CR_05M, 0) + coalesce(txn_count_DR_05M, 0) AS txn_count_05M
+    , coalesce(txn_count_CR_06M, 0) + coalesce(txn_count_DR_06M, 0) AS txn_count_06M
+    , coalesce(txn_count_CR_07M, 0) + coalesce(txn_count_DR_07M, 0) AS txn_count_07M
+    , coalesce(txn_count_CR_08M, 0) + coalesce(txn_count_DR_08M, 0) AS txn_count_08M
+    , coalesce(txn_count_CR_09M, 0) + coalesce(txn_count_DR_09M, 0) AS txn_count_09M
+    , coalesce(txn_count_CR_10M, 0) + coalesce(txn_count_DR_10M, 0) AS txn_count_10M
+    , coalesce(txn_count_CR_11M, 0) + coalesce(txn_count_DR_11M, 0) AS txn_count_11M
+    , coalesce(txn_count_CR_12M, 0) + coalesce(txn_count_DR_12M, 0) AS txn_count_12M
+
+    -- Had-a-CREDIT-this-month flags.
+    , CASE WHEN txn_count_CR_01M > 0 THEN 1 ELSE 0 END AS txn_count_CR_01M_flag
+    , CASE WHEN txn_count_CR_02M > 0 THEN 1 ELSE 0 END AS txn_count_CR_02M_flag
+    , CASE WHEN txn_count_CR_03M > 0 THEN 1 ELSE 0 END AS txn_count_CR_03M_flag
+    , CASE WHEN txn_count_CR_04M > 0 THEN 1 ELSE 0 END AS txn_count_CR_04M_flag
+    , CASE WHEN txn_count_CR_05M > 0 THEN 1 ELSE 0 END AS txn_count_CR_05M_flag
+    , CASE WHEN txn_count_CR_06M > 0 THEN 1 ELSE 0 END AS txn_count_CR_06M_flag
+    , CASE WHEN txn_count_CR_07M > 0 THEN 1 ELSE 0 END AS txn_count_CR_07M_flag
+    , CASE WHEN txn_count_CR_08M > 0 THEN 1 ELSE 0 END AS txn_count_CR_08M_flag
+    , CASE WHEN txn_count_CR_09M > 0 THEN 1 ELSE 0 END AS txn_count_CR_09M_flag
+    , CASE WHEN txn_count_CR_10M > 0 THEN 1 ELSE 0 END AS txn_count_CR_10M_flag
+    , CASE WHEN txn_count_CR_11M > 0 THEN 1 ELSE 0 END AS txn_count_CR_11M_flag
+    , CASE WHEN txn_count_CR_12M > 0 THEN 1 ELSE 0 END AS txn_count_CR_12M_flag
+
+    -- Had-a-DEBIT-this-month flags.
+    , CASE WHEN txn_count_DR_01M > 0 THEN 1 ELSE 0 END AS txn_count_DR_01M_flag
+    , CASE WHEN txn_count_DR_02M > 0 THEN 1 ELSE 0 END AS txn_count_DR_02M_flag
+    , CASE WHEN txn_count_DR_03M > 0 THEN 1 ELSE 0 END AS txn_count_DR_03M_flag
+    , CASE WHEN txn_count_DR_04M > 0 THEN 1 ELSE 0 END AS txn_count_DR_04M_flag
+    , CASE WHEN txn_count_DR_05M > 0 THEN 1 ELSE 0 END AS txn_count_DR_05M_flag
+    , CASE WHEN txn_count_DR_06M > 0 THEN 1 ELSE 0 END AS txn_count_DR_06M_flag
+    , CASE WHEN txn_count_DR_07M > 0 THEN 1 ELSE 0 END AS txn_count_DR_07M_flag
+    , CASE WHEN txn_count_DR_08M > 0 THEN 1 ELSE 0 END AS txn_count_DR_08M_flag
+    , CASE WHEN txn_count_DR_09M > 0 THEN 1 ELSE 0 END AS txn_count_DR_09M_flag
+    , CASE WHEN txn_count_DR_10M > 0 THEN 1 ELSE 0 END AS txn_count_DR_10M_flag
+    , CASE WHEN txn_count_DR_11M > 0 THEN 1 ELSE 0 END AS txn_count_DR_11M_flag
+    , CASE WHEN txn_count_DR_12M > 0 THEN 1 ELSE 0 END AS txn_count_DR_12M_flag
+
+    -- Had-ANY-activity-this-month flags.
+    , CASE WHEN coalesce(txn_count_CR_01M, 0) + coalesce(txn_count_DR_01M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_01M_flag
+    , CASE WHEN coalesce(txn_count_CR_02M, 0) + coalesce(txn_count_DR_02M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_02M_flag
+    , CASE WHEN coalesce(txn_count_CR_03M, 0) + coalesce(txn_count_DR_03M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_03M_flag
+    , CASE WHEN coalesce(txn_count_CR_04M, 0) + coalesce(txn_count_DR_04M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_04M_flag
+    , CASE WHEN coalesce(txn_count_CR_05M, 0) + coalesce(txn_count_DR_05M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_05M_flag
+    , CASE WHEN coalesce(txn_count_CR_06M, 0) + coalesce(txn_count_DR_06M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_06M_flag
+    , CASE WHEN coalesce(txn_count_CR_07M, 0) + coalesce(txn_count_DR_07M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_07M_flag
+    , CASE WHEN coalesce(txn_count_CR_08M, 0) + coalesce(txn_count_DR_08M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_08M_flag
+    , CASE WHEN coalesce(txn_count_CR_09M, 0) + coalesce(txn_count_DR_09M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_09M_flag
+    , CASE WHEN coalesce(txn_count_CR_10M, 0) + coalesce(txn_count_DR_10M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_10M_flag
+    , CASE WHEN coalesce(txn_count_CR_11M, 0) + coalesce(txn_count_DR_11M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_11M_flag
+    , CASE WHEN coalesce(txn_count_CR_12M, 0) + coalesce(txn_count_DR_12M, 0) > 0 THEN 1 ELSE 0 END AS txn_count_12M_flag
+
+    -- Quarterly CREDIT totals (Q1 = months 1-3, … Q4 = months 10-12).
+    , coalesce(sum_txn_amount_CR_01M, 0) + coalesce(sum_txn_amount_CR_02M, 0) + coalesce(sum_txn_amount_CR_03M, 0) AS sum_txn_amount_CR_01Q
+    , coalesce(sum_txn_amount_CR_04M, 0) + coalesce(sum_txn_amount_CR_05M, 0) + coalesce(sum_txn_amount_CR_06M, 0) AS sum_txn_amount_CR_02Q
+    , coalesce(sum_txn_amount_CR_07M, 0) + coalesce(sum_txn_amount_CR_08M, 0) + coalesce(sum_txn_amount_CR_09M, 0) AS sum_txn_amount_CR_03Q
+    , coalesce(sum_txn_amount_CR_10M, 0) + coalesce(sum_txn_amount_CR_11M, 0) + coalesce(sum_txn_amount_CR_12M, 0) AS sum_txn_amount_CR_04Q
+
+    -- Monthly net flow (credit minus debit) — positive => money accumulating.
+    , sum_txn_amount_CR_01M - sum_txn_amount_DR_01M AS CR_MINUS_DR_01M
+    , sum_txn_amount_CR_02M - sum_txn_amount_DR_02M AS CR_MINUS_DR_02M
+    , sum_txn_amount_CR_03M - sum_txn_amount_DR_03M AS CR_MINUS_DR_03M
+    , sum_txn_amount_CR_04M - sum_txn_amount_DR_04M AS CR_MINUS_DR_04M
+    , sum_txn_amount_CR_05M - sum_txn_amount_DR_05M AS CR_MINUS_DR_05M
+    , sum_txn_amount_CR_06M - sum_txn_amount_DR_06M AS CR_MINUS_DR_06M
+    , sum_txn_amount_CR_07M - sum_txn_amount_DR_07M AS CR_MINUS_DR_07M
+    , sum_txn_amount_CR_08M - sum_txn_amount_DR_08M AS CR_MINUS_DR_08M
+    , sum_txn_amount_CR_09M - sum_txn_amount_DR_09M AS CR_MINUS_DR_09M
+    , sum_txn_amount_CR_10M - sum_txn_amount_DR_10M AS CR_MINUS_DR_10M
+    , sum_txn_amount_CR_11M - sum_txn_amount_DR_11M AS CR_MINUS_DR_11M
+    , sum_txn_amount_CR_12M - sum_txn_amount_DR_12M AS CR_MINUS_DR_12M
+FROM SC_BANKING_SEG_FRANCHISE_FEATURES;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 4 — ACTIVITY COUNTS & CONSECUTIVE RUNS (FEATURES2)
+   ----------------------------------------------------------------------------
+   months_transated[_CR/_DR]    : how many of the 12 months had activity
+                                  (total / credit-only / debit-only).
+   consecutive_banking_months[_CR/_DR] :
+        length of the UNBROKEN streak starting at month 1 (the most recent
+        month). The long CASE ladder checks 12→1 in order: it returns the
+        highest N for which months 1..N ALL had activity. As soon as a gap
+        appears the streak stops. (E.g. active in M1,M2,M4 -> streak = 2.)
+   cr_minus_dr_pos_months       : COUNT (not streak) of months whose net flow
+                                  exceeded the +ve threshold (500). Measures
+                                  how often the customer was cash-positive.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE_FEATURES2;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE_FEATURES2 AS
+SELECT *
+    -- Count of active months (any / credit / debit).
+    , txn_count_01M_flag + txn_count_02M_flag + txn_count_03M_flag + txn_count_04M_flag + txn_count_05M_flag + txn_count_06M_flag + txn_count_07M_flag + txn_count_08M_flag + txn_count_09M_flag + txn_count_10M_flag + txn_count_11M_flag + txn_count_12M_flag AS months_transated
+    , txn_count_CR_01M_flag + txn_count_CR_02M_flag + txn_count_CR_03M_flag + txn_count_CR_04M_flag + txn_count_CR_05M_flag + txn_count_CR_06M_flag + txn_count_CR_07M_flag + txn_count_CR_08M_flag + txn_count_CR_09M_flag + txn_count_CR_10M_flag + txn_count_CR_11M_flag + txn_count_CR_12M_flag AS months_transated_CR
+    , txn_count_DR_01M_flag + txn_count_DR_02M_flag + txn_count_DR_03M_flag + txn_count_DR_04M_flag + txn_count_DR_05M_flag + txn_count_DR_06M_flag + txn_count_DR_07M_flag + txn_count_DR_08M_flag + txn_count_DR_09M_flag + txn_count_DR_10M_flag + txn_count_DR_11M_flag + txn_count_DR_12M_flag AS months_transated_DR
+
+    -- Consecutive ANY-activity streak from month 1 (12 down to 1; first hit wins).
+    , CASE
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 AND txn_count_07M_flag > 0 AND txn_count_08M_flag > 0 AND txn_count_09M_flag > 0 AND txn_count_10M_flag > 0 AND txn_count_11M_flag > 0 AND txn_count_12M_flag > 0 THEN 12
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 AND txn_count_07M_flag > 0 AND txn_count_08M_flag > 0 AND txn_count_09M_flag > 0 AND txn_count_10M_flag > 0 AND txn_count_11M_flag > 0 THEN 11
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 AND txn_count_07M_flag > 0 AND txn_count_08M_flag > 0 AND txn_count_09M_flag > 0 AND txn_count_10M_flag > 0 THEN 10
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 AND txn_count_07M_flag > 0 AND txn_count_08M_flag > 0 AND txn_count_09M_flag > 0 THEN 9
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 AND txn_count_07M_flag > 0 AND txn_count_08M_flag > 0 THEN 8
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 AND txn_count_07M_flag > 0 THEN 7
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 AND txn_count_06M_flag > 0 THEN 6
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 AND txn_count_05M_flag > 0 THEN 5
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 AND txn_count_04M_flag > 0 THEN 4
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 AND txn_count_03M_flag > 0 THEN 3
+        WHEN txn_count_01M_flag > 0 AND txn_count_02M_flag > 0 THEN 2
+        WHEN txn_count_01M_flag > 0 THEN 1 ELSE 0
+      END AS consecutive_banking_months
+
+    -- Consecutive CREDIT streak from month 1.
+    , CASE
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 AND txn_count_CR_07M_flag > 0 AND txn_count_CR_08M_flag > 0 AND txn_count_CR_09M_flag > 0 AND txn_count_CR_10M_flag > 0 AND txn_count_CR_11M_flag > 0 AND txn_count_CR_12M_flag > 0 THEN 12
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 AND txn_count_CR_07M_flag > 0 AND txn_count_CR_08M_flag > 0 AND txn_count_CR_09M_flag > 0 AND txn_count_CR_10M_flag > 0 AND txn_count_CR_11M_flag > 0 THEN 11
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 AND txn_count_CR_07M_flag > 0 AND txn_count_CR_08M_flag > 0 AND txn_count_CR_09M_flag > 0 AND txn_count_CR_10M_flag > 0 THEN 10
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 AND txn_count_CR_07M_flag > 0 AND txn_count_CR_08M_flag > 0 AND txn_count_CR_09M_flag > 0 THEN 9
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 AND txn_count_CR_07M_flag > 0 AND txn_count_CR_08M_flag > 0 THEN 8
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 AND txn_count_CR_07M_flag > 0 THEN 7
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 AND txn_count_CR_06M_flag > 0 THEN 6
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 AND txn_count_CR_05M_flag > 0 THEN 5
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 AND txn_count_CR_04M_flag > 0 THEN 4
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 AND txn_count_CR_03M_flag > 0 THEN 3
+        WHEN txn_count_CR_01M_flag > 0 AND txn_count_CR_02M_flag > 0 THEN 2
+        WHEN txn_count_CR_01M_flag > 0 THEN 1 ELSE 0
+      END AS consecutive_banking_months_CR
+
+    -- Consecutive DEBIT streak from month 1.
+    , CASE
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 AND txn_count_DR_07M_flag > 0 AND txn_count_DR_08M_flag > 0 AND txn_count_DR_09M_flag > 0 AND txn_count_DR_10M_flag > 0 AND txn_count_DR_11M_flag > 0 AND txn_count_DR_12M_flag > 0 THEN 12
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 AND txn_count_DR_07M_flag > 0 AND txn_count_DR_08M_flag > 0 AND txn_count_DR_09M_flag > 0 AND txn_count_DR_10M_flag > 0 AND txn_count_DR_11M_flag > 0 THEN 11
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 AND txn_count_DR_07M_flag > 0 AND txn_count_DR_08M_flag > 0 AND txn_count_DR_09M_flag > 0 AND txn_count_DR_10M_flag > 0 THEN 10
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 AND txn_count_DR_07M_flag > 0 AND txn_count_DR_08M_flag > 0 AND txn_count_DR_09M_flag > 0 THEN 9
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 AND txn_count_DR_07M_flag > 0 AND txn_count_DR_08M_flag > 0 THEN 8
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 AND txn_count_DR_07M_flag > 0 THEN 7
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 AND txn_count_DR_06M_flag > 0 THEN 6
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 AND txn_count_DR_05M_flag > 0 THEN 5
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 AND txn_count_DR_04M_flag > 0 THEN 4
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 AND txn_count_DR_03M_flag > 0 THEN 3
+        WHEN txn_count_DR_01M_flag > 0 AND txn_count_DR_02M_flag > 0 THEN 2
+        WHEN txn_count_DR_01M_flag > 0 THEN 1 ELSE 0
+      END AS consecutive_banking_months_DR
+
+    -- COUNT of months with net inflow above the +ve threshold (500).
+    , CASE WHEN CR_MINUS_DR_01M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_02M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_03M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_04M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_05M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_06M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_07M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_08M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_09M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_10M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_11M > 500 THEN 1 ELSE 0 END
+    + CASE WHEN CR_MINUS_DR_12M > 500 THEN 1 ELSE 0 END
+      AS cr_minus_dr_pos_months
+FROM SC_BANKING_SEG_FRANCHISE_FEATURES1;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 5 — CREDIT DISTRIBUTION STATISTICS (FEATURES3)
+   ----------------------------------------------------------------------------
+   Summarise the spread of monthly / quarterly credit so D can judge how
+   "regular" a customer's income is:
+
+     sum_txn_amount_CR_Q   = stats over the 4 QUARTERLY credit totals
+     sum_txn_amount_CR_Y   = stats over the 12 MONTHLY credit totals
+   In the original these come from Snowflake UDFs stats_summary4 / _12 that
+   return a JSON blob; the medians & means are then pulled out with
+   json_extract_path_text. (DuckDB port: replace with
+   list_aggregate([...], 'median' / 'avg').)
+
+     med_/mean_sum_txn_amount_CR_Q  : quarterly credit median & mean
+     med_/mean_sum_txn_amount_CR_Y  : annual (monthly) credit median & mean
+   Median vs mean gap later signals income lumpiness.
+
+   conse_cr_minus_dr_pos_months : consecutive STREAK (from month 1) of months
+                                  with net inflow > 500 — the streak counterpart
+                                  to the cr_minus_dr_pos_months COUNT in Step 4.
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE_FEATURES3;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE_FEATURES3 AS
+WITH stats AS (
+    SELECT *
+        -- Quarterly credit distribution summary (median/mean/min/max as JSON).
+        , stats_summary4(sum_txn_amount_CR_01Q, sum_txn_amount_CR_02Q, sum_txn_amount_CR_03Q, sum_txn_amount_CR_04Q) AS sum_txn_amount_CR_Q
+        -- Annual (12-month) credit distribution summary.
+        , stats_summary12(sum_txn_amount_CR_01M, sum_txn_amount_CR_02M, sum_txn_amount_CR_03M, sum_txn_amount_CR_04M, sum_txn_amount_CR_05M, sum_txn_amount_CR_06M, sum_txn_amount_CR_07M, sum_txn_amount_CR_08M, sum_txn_amount_CR_09M, sum_txn_amount_CR_10M, sum_txn_amount_CR_11M, sum_txn_amount_CR_12M) AS sum_txn_amount_CR_Y
+    FROM SC_BANKING_SEG_FRANCHISE_FEATURES2
+)
+SELECT *
+    -- Pull median & mean out of the JSON summaries.
+    , json_extract_path_text(sum_txn_amount_CR_Q, 'median')::float AS med_sum_txn_amount_CR_Q
+    , json_extract_path_text(sum_txn_amount_CR_Q, 'mean')::float   AS mean_sum_txn_amount_CR_Q
+    , json_extract_path_text(sum_txn_amount_CR_Y, 'median')::float AS med_sum_txn_amount_CR_Y
+    , json_extract_path_text(sum_txn_amount_CR_Y, 'mean')::float   AS mean_sum_txn_amount_CR_Y
+
+    -- Consecutive positive-net-flow streak from month 1 (>500 each month).
+    , CASE
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 AND CR_MINUS_DR_07M > 500 AND CR_MINUS_DR_08M > 500 AND CR_MINUS_DR_09M > 500 AND CR_MINUS_DR_10M > 500 AND CR_MINUS_DR_11M > 500 AND CR_MINUS_DR_12M > 500 THEN 12
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 AND CR_MINUS_DR_07M > 500 AND CR_MINUS_DR_08M > 500 AND CR_MINUS_DR_09M > 500 AND CR_MINUS_DR_10M > 500 AND CR_MINUS_DR_11M > 500 THEN 11
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 AND CR_MINUS_DR_07M > 500 AND CR_MINUS_DR_08M > 500 AND CR_MINUS_DR_09M > 500 AND CR_MINUS_DR_10M > 500 THEN 10
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 AND CR_MINUS_DR_07M > 500 AND CR_MINUS_DR_08M > 500 AND CR_MINUS_DR_09M > 500 THEN 9
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 AND CR_MINUS_DR_07M > 500 AND CR_MINUS_DR_08M > 500 THEN 8
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 AND CR_MINUS_DR_07M > 500 THEN 7
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 AND CR_MINUS_DR_06M > 500 THEN 6
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 AND CR_MINUS_DR_05M > 500 THEN 5
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 AND CR_MINUS_DR_04M > 500 THEN 4
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 AND CR_MINUS_DR_03M > 500 THEN 3
+        WHEN CR_MINUS_DR_01M > 500 AND CR_MINUS_DR_02M > 500 THEN 2
+        WHEN CR_MINUS_DR_01M > 500 THEN 1 ELSE 0
+      END AS conse_cr_minus_dr_pos_months
+FROM stats;
+
+
+/* ----------------------------------------------------------------------------
+   STEP 6 — FINAL FEATURE SELECTION (FEATURES4)
+   ----------------------------------------------------------------------------
+   Trim to only the columns Phase D actually consumes: identity, activity &
+   consecutive-month features, monthly credit amounts/counts/max, self-transfer
+   amounts, debit amounts/flags, UPI amounts/counts, quarterly credit totals,
+   the credit statistics, and the CR-DR positive-month features.
+   (Balance columns remain commented out — feed disabled.)
+   ---------------------------------------------------------------------------- */
+DROP TABLE IF EXISTS SC_BANKING_SEG_FRANCHISE_FEATURES4;
+CREATE TABLE SC_BANKING_SEG_FRANCHISE_FEATURES4 AS
+SELECT
+    cust_id
+    , consecutive_banking_months
+    , months_transated
+
+    -- Had-a-credit flags per month.
+    , txn_count_CR_01M_flag, txn_count_CR_02M_flag, txn_count_CR_03M_flag
+    , txn_count_CR_04M_flag, txn_count_CR_05M_flag, txn_count_CR_06M_flag
+    , txn_count_CR_07M_flag, txn_count_CR_08M_flag, txn_count_CR_09M_flag
+    , txn_count_CR_10M_flag, txn_count_CR_11M_flag, txn_count_CR_12M_flag
+
+    -- Monthly credit totals.
+    , sum_txn_amount_CR_01M, sum_txn_amount_CR_02M, sum_txn_amount_CR_03M
+    , sum_txn_amount_CR_04M, sum_txn_amount_CR_05M, sum_txn_amount_CR_06M
+    , sum_txn_amount_CR_07M, sum_txn_amount_CR_08M, sum_txn_amount_CR_09M
+    , sum_txn_amount_CR_10M, sum_txn_amount_CR_11M, sum_txn_amount_CR_12M
+
+    , months_transated_CR
+    , months_transated_DR
+    , consecutive_banking_months_CR
+
+    -- Credit distribution stats.
+    , med_sum_txn_amount_CR_Q
+    , mean_sum_txn_amount_CR_Q
+    , med_sum_txn_amount_CR_Y
+    , mean_sum_txn_amount_CR_Y
+
+    -- Self-transfer CREDIT amounts per month.
+    , sum_st_amt_CR_01M, sum_st_amt_CR_02M, sum_st_amt_CR_03M
+    , sum_st_amt_CR_04M, sum_st_amt_CR_05M, sum_st_amt_CR_06M
+    , sum_st_amt_CR_07M, sum_st_amt_CR_08M, sum_st_amt_CR_09M
+    , sum_st_amt_CR_10M, sum_st_amt_CR_11M, sum_st_amt_CR_12M
+
+    -- Debit: had-a-debit flag, self-transfer debit amount, total debit (per month).
+    , txn_count_DR_01M_flag, sum_st_amt_DR_01M, sum_txn_amount_DR_01M
+    , txn_count_DR_02M_flag, sum_st_amt_DR_02M, sum_txn_amount_DR_02M
+    , txn_count_DR_03M_flag, sum_st_amt_DR_03M, sum_txn_amount_DR_03M
+    , txn_count_DR_04M_flag, sum_st_amt_DR_04M, sum_txn_amount_DR_04M
+    , txn_count_DR_05M_flag, sum_st_amt_DR_05M, sum_txn_amount_DR_05M
+    , txn_count_DR_06M_flag, sum_st_amt_DR_06M, sum_txn_amount_DR_06M
+    , txn_count_DR_07M_flag, sum_st_amt_DR_07M, sum_txn_amount_DR_07M
+    , txn_count_DR_08M_flag, sum_st_amt_DR_08M, sum_txn_amount_DR_08M
+    , txn_count_DR_09M_flag, sum_st_amt_DR_09M, sum_txn_amount_DR_09M
+    , txn_count_DR_10M_flag, sum_st_amt_DR_10M, sum_txn_amount_DR_10M
+    , txn_count_DR_11M_flag, sum_st_amt_DR_11M, sum_txn_amount_DR_11M
+    , txn_count_DR_12M_flag, sum_st_amt_DR_12M, sum_txn_amount_DR_12M
+
+    -- Credit count + largest single credit (per month) — for salary/business tests.
+    , txn_count_CR_01M, max_txn_amount_CR_01M
+    , txn_count_CR_02M, max_txn_amount_CR_02M
+    , txn_count_CR_03M, max_txn_amount_CR_03M
+    , txn_count_CR_04M, max_txn_amount_CR_04M
+    , txn_count_CR_05M, max_txn_amount_CR_05M
+    , txn_count_CR_06M, max_txn_amount_CR_06M
+    , txn_count_CR_07M, max_txn_amount_CR_07M
+    , txn_count_CR_08M, max_txn_amount_CR_08M
+    , txn_count_CR_09M, max_txn_amount_CR_09M
+    , txn_count_CR_10M, max_txn_amount_CR_10M
+    , txn_count_CR_11M, max_txn_amount_CR_11M
+    , txn_count_CR_12M, max_txn_amount_CR_12M
+
+    -- Quarterly credit totals.
+    , sum_txn_amount_CR_01Q, sum_txn_amount_CR_02Q, sum_txn_amount_CR_03Q, sum_txn_amount_CR_04Q
+
+    -- UPI credit amounts per month.
+    , sum_txn_amount_CR_UPI_01M, sum_txn_amount_CR_UPI_02M, sum_txn_amount_CR_UPI_03M
+    , sum_txn_amount_CR_UPI_04M, sum_txn_amount_CR_UPI_05M, sum_txn_amount_CR_UPI_06M
+    , sum_txn_amount_CR_UPI_07M, sum_txn_amount_CR_UPI_08M, sum_txn_amount_CR_UPI_09M
+    , sum_txn_amount_CR_UPI_10M, sum_txn_amount_CR_UPI_11M, sum_txn_amount_CR_UPI_12M
+
+    -- UPI credit counts per month.
+    , txn_count_CR_UPI_01M, txn_count_CR_UPI_02M, txn_count_CR_UPI_03M
+    , txn_count_CR_UPI_04M, txn_count_CR_UPI_05M, txn_count_CR_UPI_06M
+    , txn_count_CR_UPI_07M, txn_count_CR_UPI_08M, txn_count_CR_UPI_09M
+    , txn_count_CR_UPI_10M, txn_count_CR_UPI_11M, txn_count_CR_UPI_12M
+
+    -- Positive net-flow month features (count + streak).
+    , cr_minus_dr_pos_months
+    , conse_cr_minus_dr_pos_months
+
+    -- (balance columns disabled)
+    -- , avg_5days_bal_01M ... avg_5days_bal_12M
+FROM SC_BANKING_SEG_FRANCHISE_FEATURES3;
+-- FROM kmbl_risk.sandbox.Banking_seg_sep24   (alternate source, disabled)

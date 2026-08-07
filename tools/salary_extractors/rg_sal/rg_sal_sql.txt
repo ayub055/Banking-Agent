@@ -1,0 +1,2034 @@
+================================================================================
+FILE: RG_SAL.ipynb
+Total cells: 97
+================================================================================
+
+
+########## CELL 5 (code) ##########
+drop TABLE if exists b1_dec;
+create table b1_dec as 
+select 
+    CUST_ID, 
+    ACCNT_NUM,
+    PRTY_NAME,
+    DR_CR_INDCTOR, 
+    TRAN_DATE,
+    TRAN_AMT_IN_AC,
+    TRAN_PARTCLR,
+    EXTRACT(YEAR FROM TRAN_DATE) AS year,
+    EXTRACT(MONTH FROM TRAN_DATE) AS month
+    FROM kmbl_dex.bl_vw.fct_liability_txn
+    where 
+        (TRAN_DATE between '20250301' AND '20250831') AND 
+        current_flag = 'Y' AND
+        DR_CR_INDCTOR = 'C' AND
+        DEL_FLAG = 'N' AND 
+        cust_id in ('172741000')
+;    
+
+
+########## CELL 6 (code) ##########
+-- this depends on the month under consideration
+drop TABLE if exists monthly_sums_nov;
+CREATE TEMP TABLE monthly_sums_nov AS
+SELECT 
+    cust_id,
+    SUM(CASE WHEN MONTH = 1 THEN TRAN_AMT_IN_AC ELSE 0 END) AS Sum_032025,
+    SUM(CASE WHEN MONTH = 2 THEN TRAN_AMT_IN_AC ELSE 0 END) AS Sum_042025,
+    SUM(CASE WHEN MONTH = 3 THEN TRAN_AMT_IN_AC ELSE 0 END) AS Sum_052025,
+    SUM(CASE WHEN MONTH = 4 THEN TRAN_AMT_IN_AC ELSE 0 END) AS Sum_062025,
+    SUM(CASE WHEN MONTH = 5 THEN TRAN_AMT_IN_AC ELSE 0 END) AS Sum_072025,
+    SUM(CASE WHEN MONTH = 6 THEN TRAN_AMT_IN_AC ELSE 0 END) AS Sum_082025
+FROM b1_dec
+GROUP BY cust_id;
+
+drop TABLE if exists BASE_DATA_dec;
+drop TABLE if exists BASE_DATA_JAN;
+drop TABLE if exists BASE_DATA_feb;
+CREATE TABLE BASE_DATA_feb AS
+SELECT 
+    a.*, 
+    CASE 
+        WHEN EXTRACT(DAY FROM a.TRAN_DATE) <= 10 OR EXTRACT(DAY FROM a.TRAN_DATE) >= 20 THEN 1 
+        ELSE 0 
+    END AS DATE_BET_20_10,
+    b.Sum_032025,
+    b.Sum_042025,
+    b.Sum_052025,
+    b.Sum_062025,
+    b.Sum_072025,
+    b.Sum_082025,
+    CASE 
+        WHEN TO_CHAR(a.TRAN_DATE, 'MMYYYY') = '012026' THEN a.TRAN_AMT_IN_AC / b.Sum_032025
+        WHEN TO_CHAR(a.TRAN_DATE, 'MMYYYY') = '022026' THEN a.TRAN_AMT_IN_AC / b.Sum_042025
+        WHEN TO_CHAR(a.TRAN_DATE, 'MMYYYY') = '032026' THEN a.TRAN_AMT_IN_AC / b.Sum_052025
+        WHEN TO_CHAR(a.TRAN_DATE, 'MMYYYY') = '042026' THEN a.TRAN_AMT_IN_AC / b.Sum_062025
+        WHEN TO_CHAR(a.TRAN_DATE, 'MMYYYY') = '052026' THEN a.TRAN_AMT_IN_AC / b.Sum_072025
+        WHEN TO_CHAR(a.TRAN_DATE, 'MMYYYY') = '062026' THEN a.TRAN_AMT_IN_AC / b.Sum_082025 
+        ELSE 0 
+    END AS Px,
+    CASE WHEN Px >= 0.4 THEN 1 ELSE 0 END AS Px_GTE_40_PER,
+    CASE WHEN a.TRAN_AMT_IN_AC >= 10000 THEN 1 ELSE 0 END AS Tran_GTE_10K
+FROM b1_dec a
+LEFT JOIN monthly_sums_nov b ON a.cust_id = b.cust_id;
+
+
+
+########## CELL 8 (code) ##########
+-- RG_SAL PERCENT 1
+-- CODE STARTS
+DROP TABLE IF EXISTS data_3;
+CREATE TEMP TABLE data_3 AS
+SELECT *
+FROM BASE_DATA_feb
+WHERE Px_GTE_40_PER >= 1 
+  AND Tran_GTE_10K >= 1 
+  AND DATE_BET_20_10 >= 1
+  AND TRAN_PARTCLR NOT ILIKE '%PYT LOAN A\C SPLN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MB PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%NB PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOS PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOM PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%WAC PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%KW PL%' 
+  AND TRAN_PARTCLR NOT ILIKE 'PLCC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SHARE KHAN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INSTALLMENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SECURITIES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ADVANTAGE%' 
+  AND TRAN_PARTCLR NOT ILIKE '% RD' 
+  AND TRAN_PARTCLR NOT ILIKE 'RD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%MOBILE BANKING PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%HDFC BANK LTD RA OP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%HDFC BANK LTD%' 
+  AND TRAN_PARTCLR NOT ILIKE '%HDFC DISB FUNDED HDFC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%BAJAJ FINANCE LTD S%' 
+  AND TRAN_PARTCLR NOT ILIKE '%BAJAJ FINANCE LTD PAY HDFC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ICICI BANK LTD RAOG%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ICICI BANK LTD RAOG NEFT DISB%' 
+  AND TRAN_PARTCLR NOT ILIKE '%FULLERTON INDIA CREDIT COMP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RA-LOAN DISBURSEMENT A/C%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT FINANCE LIM%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOAN FROM CLIX%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PL DISBURSEMENT SUSP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RA DISBURSEMENT A/C%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MYLOANCARE VENTURES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOP %' 
+  AND TRAN_PARTCLR NOT ILIKE '%PPR%' 
+  AND TRAN_PARTCLR NOT ILIKE '%DISB%' 
+  AND TRAN_PARTCLR NOT ILIKE '%DIS%' 
+  AND TRAN_PARTCLR NOT ILIKE '%TATA CAPITAL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ADITYABIRLAFINANCEL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%STANDARD CHARTERED%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INDUSND BANK CHENNA%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INCRED FINANCIAL SERVICES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT FINANCE LIM%' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPI%' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPI/%' 
+  AND TRAN_PARTCLR NOT ILIKE '% NAV %' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPIR%' 
+  AND TRAN_PARTCLR NOT ILIKE 'SXFR%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CDEP%' 
+  AND TRAN_PARTCLR NOT ILIKE 'SWEEP %' 
+  AND TRAN_PARTCLR NOT ILIKE '%CRE001%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CCPMT%' 
+  AND TRAN_PARTCLR NOT ILIKE 'DEPBK%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RENT' 
+  AND TRAN_PARTCLR NOT ILIKE '%IMPS%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INTEREST%' 
+  AND TRAN_PARTCLR NOT ILIKE '%FUNDING%' 
+  AND TRAN_PARTCLR NOT ILIKE '%CASH%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOAN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%REFUND%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PROVIDENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '% OWN %' 
+  AND TRAN_PARTCLR NOT ILIKE '%/OWN %'
+  AND TRAN_PARTCLR NOT ILIKE '%/ OWN %' 
+  AND TRAN_PARTCLR NOT ILIKE '%/ OWN%' 
+  AND TRAN_PARTCLR NOT ILIKE '% SELF %'
+  AND TRAN_PARTCLR NOT ILIKE '%/SELF%' 
+  AND TRAN_PARTCLR NOT ILIKE '% NRE %' 
+  AND TRAN_PARTCLR NOT ILIKE '%MATURITY%' 
+  AND TRAN_PARTCLR NOT ILIKE 'FD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%PRINCIPAL%' 
+  AND TRAN_PARTCLR NOT ILIKE 'MB:RECEIVED%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CASH DEPOSIT%' 
+  AND TRAN_PARTCLR NOT ILIKE '% TAX%' 
+  AND TRAN_PARTCLR NOT ILIKE 'TD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%TRF FROM KS%' 
+  AND TRAN_PARTCLR NOT ILIKE '% P2P %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ZERODHA %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ANGEL ONE %' 
+  AND TRAN_PARTCLR NOT ILIKE '% UPSTOX %' 
+  AND TRAN_PARTCLR NOT ILIKE '% 5PAISA %' 
+  AND TRAN_PARTCLR NOT ILIKE '% FYERS %' 
+  AND TRAN_PARTCLR NOT ILIKE '% PAYTM MONEY %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CLG %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHQ %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHARGESWAGES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHARGES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ADVANCES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% PAYU %'
+  -- added in april
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT%'
+  -- AND TRAN_PARTCLR NOT ILIKE '%RES%'
+  -- AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT%'
+  -- AND TRAN_PARTCLR NOT ILIKE '%ORACLE%'
+  ;
+
+-- Merchant Creation from Transaction Particular --
+
+########## CELL 9 (code) ##########
+DROP TABLE IF EXISTS merchants_rg_salc;
+CREATE TEMP TABLE merchants_rg_salc AS
+SELECT *,
+    CASE
+        WHEN 
+            tran_partclr ILIKE '%SALARY%' OR 
+            tran_partclr ILIKE '% SALARY %' OR 
+            tran_partclr ILIKE '%WAGE%' OR
+            tran_partclr ILIKE 'salary%' OR  
+            tran_partclr ILIKE 'sal %' OR 
+            tran_partclr ILIKE '%/salary%' OR 
+            tran_partclr ILIKE '%/salary' OR 
+            tran_partclr ILIKE '%/ salary%' OR
+            tran_partclr ILIKE '%/ sal %' OR
+            tran_partclr ILIKE '%/sal %' OR
+            tran_partclr ILIKE '%/ salar%' OR 
+            tran_partclr ILIKE '%/salar' OR 
+            tran_partclr ILIKE '%-sal' OR  
+            tran_partclr ILIKE '%-sal-%' OR     
+            tran_partclr ILIKE '%cognizantsal%' OR
+            tran_partclr ILIKE '%salar%' OR
+            tran_partclr ILIKE '%payroll%' OR
+            tran_partclr ILIKE '%WAGES%' OR
+            tran_partclr ILIKE '%BULK DEPOSIT%' OR
+            tran_partclr ILIKE  '% INCOME %' or
+            tran_partclr ILIKE  'PROFESSIONAL FEE%' or
+            tran_partclr ILIKE  'STIPEND%' or
+            tran_partclr ILIKE  '%PROFESSIONALFEE%' or
+            tran_partclr ILIKE  '%PROFESSIONAL FEE%' or
+            tran_partclr ILIKE  '%STIPEND%' or 
+            tran_partclr ILIKE  '%compensation%'
+            THEN 'SALARY'
+        WHEN tran_partclr ILIKE '%IFT%' THEN 
+            CASE 
+                WHEN tran_partclr ILIKE '%IFT-%' THEN SPLIT_PART(tran_partclr, '-', 2)
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'IFT\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE 'FROM %' THEN 
+            TRIM(
+                SPLIT_PART(tran_partclr, ' ', 2) || 
+                COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 3), '') || 
+                COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '')
+            )
+        WHEN tran_partclr ILIKE '%NACH%' THEN 
+            CASE 
+                 WHEN tran_partclr ILIKE '%NACH-%' THEN SPLIT_PART(tran_partclr, '-', 4)
+                 ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'NACH\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE 'IB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FUND TRF FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FT FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FUNDS TRF FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%UPI%' THEN 
+            CASE 
+                 WHEN tran_partclr ILIKE '%UPI/%' THEN SPLIT_PART(tran_partclr, '/', 2)
+                 ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'UPI\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%IMPS%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%IMPS/%' THEN SPLIT_PART(tran_partclr, '/', 3)
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'IMPS\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%MB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%IB:FUND%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%NEFT%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%NEFT %' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') ||
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), ''))
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'NEFT\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%IB: FUND TRANSFER%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 5) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 8), ''))
+        WHEN tran_partclr ILIKE '%FUND TRANSFER FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 5) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 8), ''))
+        WHEN tran_partclr ILIKE '%FUNDS TRANSFER FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 4) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))    
+        WHEN tran_partclr ILIKE '%FT FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))
+        WHEN tran_partclr ILIKE '%RTGS%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%RTGS %' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'RTGS\\s*', ''))
+            END
+        ELSE TRIM(REGEXP_REPLACE(tran_partclr, '(NEFT|IFT|RTGS|UPI|IMPS|MB):?\\s*', ''))
+    END AS remitter
+FROM data_3;
+
+########## CELL 10 (code) ##########
+-- Cleaning Merchant Names --
+DROP TABLE IF exists merchants_rg_sal1c;
+Create TEMP table merchants_rg_sal1c as 
+SELECT 
+    A.*,
+    TRIM(REGEXP_REPLACE(LOWER(A.cleaned_string),
+        '(neft|imps|rtgs|ift|ft|upi|chq|cash|transfer|trf|mb:|payment|paymen)',
+        ' ')) AS Merchant
+FROM (
+    SELECT *, TRIM(REGEXP_REPLACE(remitter, '[^a-zA-Z\s]', ' ')) AS cleaned_string
+    FROM merchants_rg_salc
+) AS A;
+
+
+Drop table if exists fxdMerchant2c;
+CREATE TEMP TABLE fxdMerchant2c AS
+SELECT *, ROW_NUMBER() OVER (ORDER BY cust_id, tran_partclr, tran_date, tran_amt_in_ac) AS ID
+FROM merchants_rg_sal1c;
+
+-- Counting number of credit transaction for each unique merchant
+Drop table if exists fxdMerchant3c;
+CREATE TEMP TABLE fxdMerchant3c AS
+SELECT 
+    A.*, 
+    B.no_credit_txn 
+from fxdMerchant2c A 
+left join (
+    select 
+        cust_Id, 
+        count(*) as no_credit_txn 
+    from fxdMerchant2c
+    group by cust_id) as B 
+on A.cust_id = b.cust_id;
+
+Drop table if exists Category_level_pm_tr_analysis_4c;
+CREATE TEMP TABLE Category_level_pm_tr_analysis_4c AS
+select * from 
+fxdMerchant3c 
+where no_credit_txn >=3 and 
+      no_credit_txn <=100;
+
+Drop table if exists fxdMerchant5c;
+CREATE TEMP TABLE fxdMerchant5c AS
+SELECT 
+    A.*, 
+    B.no_month_transcted_month 
+from Category_level_pm_tr_analysis_4c A 
+left join (
+    select 
+        cust_Id, 
+        count(distinct month) as no_month_transcted_month
+    from Category_level_pm_tr_analysis_4c
+    group by cust_id) as B 
+on A.cust_id = b.cust_id;
+
+Drop table if exists Category_level_pm_tr_analysis_5c;
+CREATE TEMP TABLE Category_level_pm_tr_analysis_5c AS
+select * 
+from fxdMerchant5c
+where no_month_transcted_month >= 3;
+
+########## CELL 11 (code) ##########
+Drop table if exists similarity_parsingDatac;
+Create temp table similarity_parsingDatac as 
+select distinct 
+    cust_id, 
+    accnt_num,
+    tran_date, 
+    tran_amt_in_ac, 
+    tran_partclr,
+    merchant,
+    year, 
+    month,    
+    YEAR || '_' || MONTH AS yr_mnth,
+    dense_rank() over(PARTITION by cust_id order by merchant,tran_date,tran_amt_in_ac,id) as ID
+from Category_level_pm_tr_analysis_5c;
+
+Drop table if exists Simlar_Masterc;
+create TEMP table Simlar_Masterc distkey(partition_num_2) sortkey(cust_id)  as
+select 
+    A.*,
+    mod(A.partition_num,20) as partition_num_2 from (select *,DENSE_RANK() over(order by cust_id) as partition_num 
+from similarity_parsingDatac) A;
+
+drop table if exists base_datac;
+CREATE TEMP TABLE BASE_DATAc AS -- Elapsed time: 3m 10.3s , Count=1982929612
+SELECT
+      A.CUST_ID AS CUST_ID, 
+      A.MERCHANT AS S1,
+      A.ID AS ID_S1,
+      B.MERCHANT AS S2,
+      B.ID AS ID_S2
+FROM Simlar_Masterc AS A JOIN Simlar_Masterc AS B
+ON A.CUST_ID = B.CUST_ID AND A.ID < B.ID;
+
+drop table if exists UNIQUE_MERCHANTc;
+CREATE TEMP TABLE UNIQUE_MERCHANTc AS      -- Elapsed time: 1m 4.4s , Count=392250465
+SELECT DISTINCT S1, S2 FROM BASE_DATAc;
+
+drop table if exists UNIQUE_MERCHANT_PARTITIONEDc;
+CREATE TEMP TABLE UNIQUE_MERCHANT_PARTITIONEDc AS     -- Elapsed time: 1m 22.5s ,  Count=392250465 (Each Partition: ~ 20 CR)
+SELECT S1, S2, NTILE(2) OVER () AS PARTITION_NUM FROM UNIQUE_MERCHANTc;
+ 
+drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH_1c;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH_1c AS  -- Elapsed time: 23m 18.9s ,  Count=196125233
+SELECT S1,S2, DIFFERENCE(S1, S2) AS SCORE FROM UNIQUE_MERCHANT_PARTITIONEDc WHERE PARTITION_NUM=1;
+ 
+drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH_2c;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH_2c AS -- Elapsed time: 27m 49.9s , Count=196125232
+SELECT S1,S2, DIFFERENCE(S1, S2) AS SCORE FROM UNIQUE_MERCHANT_PARTITIONEDc WHERE PARTITION_NUM=2;
+ 
+drop table if exists UNIQUE_MERCHANT_FUZZY_MATCHc;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCHc AS  -- Elapsed time: 10s , Count=11063223
+SELECT S1,S2, SCORE FROM UNIQUE_MERCHANT_FUZZY_MATCH_1c WHERE SCORE > 3
+UNION ALL
+SELECT S1,S2, SCORE FROM UNIQUE_MERCHANT_FUZZY_MATCH_2c WHERE SCORE > 3;
+ 
+drop table if exists BASE_DATA_WITH_SCOREc;
+CREATE TEMP TABLE BASE_DATA_WITH_SCOREc AS     -- Elapsed time: 1m 23.5s  , Count=386935804
+SELECT
+    A.CUST_ID AS CUST_ID,
+    A.S1 AS S1,
+    A.ID_S1 AS ID_S1,
+    A.S2 AS S2,
+    A.ID_S2 AS ID_S2,
+    B.SCORE AS SCORE
+FROM BASE_DATAc A INNER JOIN UNIQUE_MERCHANT_FUZZY_MATCHc B
+ON A.S1 = B.S1 AND A.S2 = B.S2;
+
+########## CELL 12 (code) ##########
+DROP TABLE IF EXISTS SignificantScorec;
+CREATE TEMP TABLE SignificantScorec AS     
+SELECT * from BASE_DATA_WITH_SCOREc
+where SCORE > 3;
+
+DROP TABLE IF EXISTS FEB_INCOME_M7c;
+CREATE TEMP TABLE FEB_INCOME_M7c AS
+SELECT *, rank() OVER(PARTITION BY cust_id ORDER BY id_S1) AS CLUSTER_ID
+FROM SignificantScorec;
+
+DROP TABLE IF EXISTS FEB_INCOME_MERCHANT8c;
+CREATE TEMP TABLE FEB_INCOME_MERCHANT8c AS
+SELECT DISTINCT 
+    cust_id,
+    id_S2 AS UNIQUE_ID,
+    CLUSTER_ID 
+FROM FEB_INCOME_M7c
+UNION 
+SELECT DISTINCT 
+    cust_id,
+    id_S1 AS UNIQUE_ID,
+    CLUSTER_ID
+FROM FEB_INCOME_M7c;
+
+DROP TABLE IF EXISTS FEB_INCOME_MERCHANT9c;
+CREATE TEMP TABLE FEB_INCOME_MERCHANT9c AS
+SELECT cust_id, UNIQUE_ID, CLUSTER_ID 
+FROM (SELECT *,ROW_NUMBER() OVER(PARTITION BY cust_id,UNIQUE_ID ORDER BY CLUSTER_ID ASC) AS RNK
+      FROM FEB_INCOME_MERCHANT8c)
+WHERE RNK = 1;
+
+DROP TABLE IF EXISTS FINAL_TABLEc;
+CREATE TEMP TABLE FINAL_TABLEc AS
+SELECT A.*, B.CLUSTER_ID
+FROM Simlar_Masterc A
+LEFT JOIN FEB_INCOME_MERCHANT9c B 
+ON A.cust_id = B.cust_id and  A.id = B.unique_id;
+
+########## CELL 13 (code) ##########
+DROP TABLE IF exists sandbox.percent_test1_rg;
+create table sandbox.percent_test1_rg as
+select cust_id, accnt_num, cluster_id, tran_date, tran_amt_in_ac, 
+merchant, tran_partclr, month, year from FINAL_TABLEc;
+-- select * from FINAL_TABLEc;
+-- select * from Category_level_pm_tr_analysis_5c;
+-- select * from similarity_parsingDatac;
+
+select count(distinct cust_id) from sandbox.percent_test1_rg;
+
+########## CELL 14 (code) ##########
+-------- SALARY -----
+DROP TABLE IF EXISTS data_3M21;
+CREATE TEMP TABLE data_3M21 AS
+SELECT *
+FROM BASE_DATA_feb
+-- from temp_crn_rg
+WHERE Tran_GTE_10K >= 1 
+  AND TRAN_PARTCLR NOT ILIKE '%PYT LOAN A\C SPLN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MB PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%NB PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOS PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOM PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%WAC PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%KW PL%' 
+  AND TRAN_PARTCLR NOT ILIKE 'PLCC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SHARE KHAN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INSTALLMENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SECURITIES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ADVANTAGE%' 
+  AND TRAN_PARTCLR NOT ILIKE '% RD' 
+  AND TRAN_PARTCLR NOT ILIKE 'RD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%MOBILE BANKING PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RA-LOAN DISBURSEMENT A/C%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOAN FROM CLIX%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PL DISBURSEMENT SUSP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RA DISBURSEMENT A/C%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MYLOANCARE VENTURES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOP %' 
+  AND TRAN_PARTCLR NOT ILIKE '%PPR%' 
+  AND TRAN_PARTCLR NOT ILIKE '%DISB%' 
+  AND TRAN_PARTCLR NOT ILIKE '%DIS%' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPI%' 
+  AND TRAN_PARTCLR NOT ILIKE '% NAV %' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPIR%' 
+  AND TRAN_PARTCLR NOT ILIKE 'SXFR%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CDEP%' 
+  AND TRAN_PARTCLR NOT ILIKE 'SWEEP %' 
+  AND TRAN_PARTCLR NOT ILIKE '%CRE001%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CCPMT%' 
+  AND TRAN_PARTCLR NOT ILIKE 'DEPBK%' 
+  AND TRAN_PARTCLR NOT ILIKE '% RENT' 
+--   AND TRAN_PARTCLR NOT ILIKE '%IMPS%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INTEREST%' 
+  AND TRAN_PARTCLR NOT ILIKE '%FUNDING%' 
+  AND TRAN_PARTCLR NOT ILIKE '%CASH%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOAN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%REFUND%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PROVIDENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '% OWN %' 
+  AND TRAN_PARTCLR NOT ILIKE '%/OWN %' 
+  AND TRAN_PARTCLR NOT ILIKE '% SELF %'
+  AND TRAN_PARTCLR NOT ILIKE '%/SELF%' 
+  AND TRAN_PARTCLR NOT ILIKE '% NRE %' 
+  AND TRAN_PARTCLR NOT ILIKE '%MATURITY%' 
+  AND TRAN_PARTCLR NOT ILIKE 'FD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%PRINCIPAL%' 
+  AND TRAN_PARTCLR NOT ILIKE 'MB:RECEIVED%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CASH DEPOSIT%' 
+  AND TRAN_PARTCLR NOT ILIKE '% TAX%' 
+  AND TRAN_PARTCLR NOT ILIKE 'TD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%TRF FROM KS%' 
+  AND TRAN_PARTCLR NOT ILIKE '% P2P %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ZERODHA %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ANGEL ONE %' 
+  AND TRAN_PARTCLR NOT ILIKE '% UPSTOX %' 
+  AND TRAN_PARTCLR NOT ILIKE '% 5PAISA %' 
+  AND TRAN_PARTCLR NOT ILIKE '% FYERS %' 
+  AND TRAN_PARTCLR NOT ILIKE '% PAYTM MONEY %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CLG %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHQ %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHARGESWAGES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHARGES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ADVANCES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% PAYU %'
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT%'
+  -- AND TRAN_PARTCLR NOT ILIKE '%ORACLE%'
+  ;
+
+########## CELL 15 (code) ##########
+DROP TABLE IF EXISTS merchants_rg_sal;
+CREATE TEMP TABLE merchants_rg_sal AS
+SELECT *,
+    CASE
+        WHEN 
+            tran_partclr ILIKE '%SALARY%' OR 
+            tran_partclr ILIKE '% SALARY %' OR 
+            tran_partclr ILIKE '%WAGE%' OR
+            tran_partclr ILIKE 'salary%' OR  
+            tran_partclr ILIKE 'sal %' OR 
+            tran_partclr ILIKE '%/salary%' OR 
+            tran_partclr ILIKE '%/salary' OR 
+            tran_partclr ILIKE '%/ salary%' OR
+            tran_partclr ILIKE '%/ sal %' OR
+            tran_partclr ILIKE '%/sal %' OR
+            tran_partclr ILIKE '%/ salar%' OR 
+            tran_partclr ILIKE '%/salar' OR 
+            tran_partclr ILIKE '%-sal' OR  
+            tran_partclr ILIKE '%-sal-%' OR     
+            tran_partclr ILIKE '%cognizantsal%' OR
+            tran_partclr ILIKE '%salar%' OR
+            tran_partclr ILIKE '%payroll%' OR
+            tran_partclr ILIKE '%WAGES%' OR
+            tran_partclr ILIKE '%BULK DEPOSIT%' OR
+            tran_partclr ILIKE  '% INCOME %' or
+            tran_partclr ILIKE  'PROFESSIONAL FEE%' or
+            tran_partclr ILIKE  'STIPEND%' or
+            tran_partclr ILIKE  '%PROFESSIONALFEE%' or
+            tran_partclr ILIKE  '%PROFESSIONAL FEE%' or
+            tran_partclr ILIKE  '%STIPEND%'
+            THEN 'SALARY'
+        WHEN tran_partclr ILIKE '%IFT%' THEN 
+            CASE 
+                WHEN tran_partclr ILIKE '%IFT-%' THEN SPLIT_PART(tran_partclr, '-', 2)
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'IFT\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE 'FROM %' THEN 
+            TRIM(
+                SPLIT_PART(tran_partclr, ' ', 2) || 
+                COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 3), '') || 
+                COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '')
+            )
+        WHEN tran_partclr ILIKE '%NACH%' THEN 
+            CASE 
+                 WHEN tran_partclr ILIKE '%NACH-%' THEN SPLIT_PART(tran_partclr, '-', 4)
+                 ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'NACH\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE 'IB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FUND TRF FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FT FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FUNDS TRF FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%UPI%' THEN 
+            CASE 
+                 WHEN tran_partclr ILIKE '%UPI/%' THEN SPLIT_PART(tran_partclr, '/', 2)
+                 ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'UPI\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%IMPS%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%IMPS/%' THEN SPLIT_PART(tran_partclr, '/', 3)
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'IMPS\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%MB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%IB:FUND%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%NEFT%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%NEFT %' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') ||
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), ''))
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'NEFT\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%IB: FUND TRANSFER%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 5) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 8), ''))
+        WHEN tran_partclr ILIKE '%FUND TRANSFER FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 5) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 8), ''))
+        WHEN tran_partclr ILIKE '%FUNDS TRANSFER FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 4) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))    
+        WHEN tran_partclr ILIKE '%FT FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))
+        WHEN tran_partclr ILIKE '%RTGS%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%RTGS %' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'RTGS\\s*', ''))
+            END
+        ELSE TRIM(REGEXP_REPLACE(tran_partclr, '(NEFT|IFT|RTGS|UPI|IMPS|MB):?\\s*', ''))
+    END AS remitter
+FROM data_3M21;
+
+-- Cleaning Merchant Names --
+DROP TABLE IF exists merchants_rg_sal1;
+Create TEMP table merchants_rg_sal1 as 
+SELECT 
+    A.*,
+    TRIM(REGEXP_REPLACE(LOWER(A.cleaned_string),
+        '(neft|imps|rtgs|ift|ft|upi|chq|cash|transfer|trf|mb:|payment|paymen)',
+        ' ')) AS Merchant
+FROM (
+    SELECT *, TRIM(REGEXP_REPLACE(remitter, '[^a-zA-Z\s]', ' ')) AS cleaned_string
+    FROM merchants_rg_sal
+) AS A;
+
+########## CELL 16 (code) ##########
+Drop table if exists fxdMerchant2;
+CREATE TEMP TABLE fxdMerchant2 AS
+SELECT *, ROW_NUMBER() OVER (ORDER BY cust_id, tran_partclr, tran_date, tran_amt_in_ac) AS ID
+FROM merchants_rg_sal1
+where MERCHANT = 'salary';
+
+-- Counting number of credit transaction for each unique merchant
+Drop table if exists fxdMerchant3;
+CREATE TEMP TABLE fxdMerchant3 AS
+SELECT 
+    A.*, 
+    B.no_credit_txn 
+from fxdMerchant2 A 
+left join (
+    select 
+        cust_Id, 
+        count(*) as no_credit_txn 
+    from fxdMerchant2
+    group by cust_id) as B 
+on A.cust_id = b.cust_id;
+
+Drop table if exists Category_level_pm_tr_analysis_4;
+CREATE TEMP TABLE Category_level_pm_tr_analysis_4 AS
+select * from 
+fxdMerchant3 
+where no_credit_txn >=3 and 
+      no_credit_txn <=100;
+
+Drop table if exists fxdMerchant5;
+CREATE TEMP TABLE fxdMerchant5 AS
+SELECT 
+    A.*, 
+    B.no_month_transcted_month 
+from Category_level_pm_tr_analysis_4 A 
+left join (
+    select 
+        cust_Id, 
+        count(distinct month) as no_month_transcted_month
+    from Category_level_pm_tr_analysis_4
+    group by cust_id) as B 
+on A.cust_id = b.cust_id;
+
+Drop table if exists Category_level_pm_tr_analysis_5;
+CREATE TEMP TABLE Category_level_pm_tr_analysis_5 AS
+select * 
+from fxdMerchant5
+where no_month_transcted_month >= 3;
+
+########## CELL 17 (code) ##########
+Drop table if exists similarity_parsingData;
+Create temp table similarity_parsingData as 
+select distinct 
+    cust_id, 
+    accnt_num,
+    tran_date, 
+    tran_amt_in_ac, 
+    tran_partclr,
+    merchant,
+    year, 
+    month,    
+    YEAR || '_' || MONTH AS yr_mnth,
+    dense_rank() over(PARTITION by cust_id order by merchant,tran_date,tran_amt_in_ac,id) as ID
+from Category_level_pm_tr_analysis_5;
+
+Drop table if exists Simlar_Master;
+create TEMP table Simlar_Master distkey(partition_num_2) sortkey(cust_id)  as
+select 
+    A.*,
+    mod(A.partition_num,20) as partition_num_2 from (select *,DENSE_RANK() over(order by cust_id) as partition_num 
+from similarity_parsingData) A;
+
+Drop table if exists BASE_DATAe;
+CREATE TEMP TABLE BASE_DATAe AS -- Elapsed time: 3m 10.3s , Count=1982929612
+SELECT
+      A.CUST_ID AS CUST_ID, 
+      A.MERCHANT AS S1,
+      A.ID AS ID_S1,
+      B.MERCHANT AS S2,
+      B.ID AS ID_S2
+FROM Simlar_Master AS A JOIN Simlar_Master AS B
+ON A.CUST_ID = B.CUST_ID AND A.ID < B.ID;
+ 
+Drop table if exists UNIQUE_MERCHANT;
+CREATE TEMP TABLE UNIQUE_MERCHANT AS      -- Elapsed time: 1m 4.4s , Count=392250465
+SELECT DISTINCT S1, S2 FROM BASE_DATAe;
+ 
+Drop table if exists UNIQUE_MERCHANT_PARTITIONED;
+CREATE TEMP TABLE UNIQUE_MERCHANT_PARTITIONED AS     -- Elapsed time: 1m 22.5s ,  Count=392250465 (Each Partition: ~ 20 CR)
+SELECT S1, S2, NTILE(2) OVER () AS PARTITION_NUM FROM UNIQUE_MERCHANT;
+ 
+Drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH_1;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH_1 AS  -- Elapsed time: 23m 18.9s ,  Count=196125233
+SELECT S1,S2, DIFFERENCE(S1, S2) AS SCORE FROM UNIQUE_MERCHANT_PARTITIONED WHERE PARTITION_NUM=1;
+
+Drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH_2; 
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH_2 AS -- Elapsed time: 27m 49.9s , Count=196125232
+SELECT S1,S2, DIFFERENCE(S1, S2) AS SCORE FROM UNIQUE_MERCHANT_PARTITIONED WHERE PARTITION_NUM=2;
+ 
+Drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH; 
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH AS  -- Elapsed time: 10s , Count=11063223
+SELECT S1,S2, SCORE FROM UNIQUE_MERCHANT_FUZZY_MATCH_1 WHERE SCORE > 3
+UNION ALL
+SELECT S1,S2, SCORE FROM UNIQUE_MERCHANT_FUZZY_MATCH_2 WHERE SCORE > 3;
+ 
+Drop table if exists BASE_DATAe_WITH_SCORE; 
+CREATE TEMP TABLE BASE_DATAe_WITH_SCORE AS     -- Elapsed time: 1m 23.5s  , Count=386935804
+SELECT
+    A.CUST_ID AS CUST_ID,
+    A.S1 AS S1,
+    A.ID_S1 AS ID_S1,
+    A.S2 AS S2,
+    A.ID_S2 AS ID_S2,
+    B.SCORE AS SCORE
+FROM BASE_DATAe A INNER JOIN UNIQUE_MERCHANT_FUZZY_MATCH B
+ON A.S1 = B.S1 AND A.S2 = B.S2;
+
+########## CELL 18 (code) ##########
+drop table if exists SignificantScore;
+CREATE TEMP TABLE SignificantScore AS     
+SELECT * from BASE_DATAe_WITH_SCORE where SCORE > 3;
+
+DROP TABLE IF EXISTS FEB_INCOME_M7;
+CREATE TEMP TABLE FEB_INCOME_M7 AS
+SELECT *, rank() OVER(PARTITION BY cust_id ORDER BY id_S1) AS CLUSTER_ID FROM SignificantScore;
+
+DROP TABLE IF EXISTS FEB_INCOME_MERCHANT8;
+CREATE TEMP TABLE FEB_INCOME_MERCHANT8 AS
+SELECT DISTINCT cust_id,
+id_S2 AS UNIQUE_ID,
+CLUSTER_ID
+FROM FEB_INCOME_M7 
+UNION 
+SELECT DISTINCT cust_id,
+id_S1 AS UNIQUE_ID,
+CLUSTER_ID 
+FROM FEB_INCOME_M7;
+
+DROP TABLE IF EXISTS FEB_INCOME_MERCHANT9;
+CREATE TEMP TABLE FEB_INCOME_MERCHANT9 AS
+SELECT cust_id, UNIQUE_ID, CLUSTER_ID 
+FROM (SELECT *,ROW_NUMBER() OVER(PARTITION BY cust_id,UNIQUE_ID ORDER BY CLUSTER_ID ASC) AS RNK FROM FEB_INCOME_MERCHANT8) WHERE RNK = 1;
+
+DROP TABLE IF EXISTS FINAL_TABLE;
+CREATE TEMP TABLE FINAL_TABLE AS
+SELECT A.*, B.CLUSTER_ID FROM Simlar_Master A
+LEFT JOIN FEB_INCOME_MERCHANT9 B 
+ON A.cust_id = B.cust_id and A.id = B.unique_id;
+
+########## CELL 19 (code) ##########
+drop table if exists sandbox.salary_test1_rg;
+create table sandbox.salary_test1_rg as
+select cust_id, accnt_num, cluster_id, tran_date, 
+tran_amt_in_ac, merchant, tran_partclr, month, year from FINAL_TABLE;
+select count(DISTINCT cust_id) from sandbox.salary_test1_rg;
+
+########## CELL 20 (code) ##########
+----- COMPANY
+DROP TABLE IF EXISTS data_3M22;
+CREATE TEMP TABLE data_3M22 AS
+SELECT * 
+from BASE_DATA_feb 
+-- from temp_crn_rg
+WHERE Tran_GTE_10K >= 1 
+  AND TRAN_PARTCLR NOT ILIKE '%PYT LOAN A\C SPLN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MB PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%NB PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOS PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOM PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%WAC PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%KW PL%' 
+  AND TRAN_PARTCLR NOT ILIKE 'PLCC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SHARE KHAN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INSTALLMENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SECURITIES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ADVANTAGE%' 
+  AND TRAN_PARTCLR NOT ILIKE '% RD' 
+  AND TRAN_PARTCLR NOT ILIKE 'RD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%MOBILE BANKING PL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%HDFC BANK LTD RA OP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%HDFC BANK LTD%' 
+  AND TRAN_PARTCLR NOT ILIKE '%HDFC DISB FUNDED HDFC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%BAJAJ FINANCE LTD S%' 
+  AND TRAN_PARTCLR NOT ILIKE '%BAJAJ FINANCE LTD PAY HDFC%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ICICI BANK LTD RAOG%' 
+  AND TRAN_PARTCLR NOT ILIKE '%FULLERTON INDIA CREDIT COMP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RA-LOAN DISBURSEMENT A/C%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT FINANCE LIM' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOAN FROM CLIX%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PL DISBURSEMENT SUSP%' 
+  AND TRAN_PARTCLR NOT ILIKE '%RA DISBURSEMENT A/C%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MYLOANCARE VENTURES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PF SETTLEMENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '%SETTLEMENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ENCASHMENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOP %' 
+  AND TRAN_PARTCLR NOT ILIKE '%PPR%' 
+  AND TRAN_PARTCLR NOT ILIKE '%DISB%' 
+  AND TRAN_PARTCLR NOT ILIKE '%DIS%' 
+  AND TRAN_PARTCLR NOT ILIKE '%TATA CAPITAL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%ADITYABIRLAFINANCEL%' 
+  AND TRAN_PARTCLR NOT ILIKE '%STANDARD CHARTERED%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INDUSND BANK CHENNA%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INCRED FINANCIAL SERVICES%' 
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT FINANCE LIM%' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPI%' 
+  AND TRAN_PARTCLR NOT ILIKE '% NAV %' 
+  AND TRAN_PARTCLR NOT ILIKE 'UPIR%' 
+  AND TRAN_PARTCLR NOT ILIKE 'SXFR%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CDEP%' 
+  AND TRAN_PARTCLR NOT ILIKE 'SWEEP %' 
+  AND TRAN_PARTCLR NOT ILIKE '%CRE001%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CCPMT%' 
+  AND TRAN_PARTCLR NOT ILIKE 'DEPBK%' 
+  AND TRAN_PARTCLR NOT ILIKE '% RENT' 
+  AND TRAN_PARTCLR NOT ILIKE '%/RENT' 
+--   AND TRAN_PARTCLR NOT ILIKE '%IMPS%' 
+  AND TRAN_PARTCLR NOT ILIKE '%INTEREST%' 
+  AND TRAN_PARTCLR NOT ILIKE '%FUNDING%' 
+  AND TRAN_PARTCLR NOT ILIKE '%CASH%' 
+  AND TRAN_PARTCLR NOT ILIKE '%LOAN%' 
+  AND TRAN_PARTCLR NOT ILIKE '%REFUND%' 
+  AND TRAN_PARTCLR NOT ILIKE '%PROVIDENT%' 
+  AND TRAN_PARTCLR NOT ILIKE '% OWN %' 
+  AND TRAN_PARTCLR NOT ILIKE '%/OWN %'
+  AND TRAN_PARTCLR NOT ILIKE '%/ OWN %' 
+  AND TRAN_PARTCLR NOT ILIKE '%/ OWN%' 
+  AND TRAN_PARTCLR NOT ILIKE '% SELF %'
+  AND TRAN_PARTCLR NOT ILIKE '%/SELF%'  
+  AND TRAN_PARTCLR NOT ILIKE '% NRE %' 
+  AND TRAN_PARTCLR NOT ILIKE '%MATURITY%' 
+  AND TRAN_PARTCLR NOT ILIKE 'FD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%PRINCIPAL%' 
+  AND TRAN_PARTCLR NOT ILIKE 'MB:RECEIVED%' 
+  AND TRAN_PARTCLR NOT ILIKE 'CASH DEPOSIT%' 
+  AND TRAN_PARTCLR NOT ILIKE '% TAX%' 
+  AND TRAN_PARTCLR NOT ILIKE 'TD %' 
+  AND TRAN_PARTCLR NOT ILIKE '%TRF FROM KS%' 
+  AND TRAN_PARTCLR NOT ILIKE '% PMSI %' 
+  AND TRAN_PARTCLR NOT ILIKE '% P2P %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ZERODHA %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ANGEL ONE %' 
+  AND TRAN_PARTCLR NOT ILIKE '% UPSTOX %' 
+  AND TRAN_PARTCLR NOT ILIKE '% 5PAISA %' 
+  AND TRAN_PARTCLR NOT ILIKE '% FYERS %' 
+  AND TRAN_PARTCLR NOT ILIKE '% PAYTM MONEY %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CLG %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHQ %'
+  AND TRAN_PARTCLR NOT ILIKE '%TRF CHQ%' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHARGESWAGES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% CHARGES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% ADVANCES %' 
+  AND TRAN_PARTCLR NOT ILIKE '% PAYU %'
+  AND TRAN_PARTCLR NOT ILIKE '%Int.Pd%'
+  AND TRAN_PARTCLR NOT ILIKE '%/emi'
+  AND TRAN_PARTCLR NOT ILIKE '%MUTHOOT%'
+  -- AND TRAN_PARTCLR NOT ILIKE '%ORACLE%'
+  ;
+
+########## CELL 21 (code) ##########
+DROP TABLE IF EXISTS Data4_m22;
+CREATE TEMP TABLE Data4_m22 AS
+SELECT * FROM data_3M22
+WHERE TRAN_PARTCLR ILIKE '% TCS %' OR
+      TRAN_PARTCLR ILIKE '% INFOSYS %' OR
+      TRAN_PARTCLR ILIKE '% WIPRO %' OR
+      TRAN_PARTCLR ILIKE '% ONGC %' OR
+      TRAN_PARTCLR ILIKE '% HCLTECH %' OR
+      TRAN_PARTCLR ILIKE '% HCL TECH %' OR
+      TRAN_PARTCLR ILIKE '% TECH MAHINDRA %' OR
+      TRAN_PARTCLR ILIKE '% IOC %' OR
+      TRAN_PARTCLR ILIKE '% SAIL %' OR
+      TRAN_PARTCLR ILIKE '% QUESS CORP %' OR
+      TRAN_PARTCLR ILIKE '% QUESS %' OR
+      TRAN_PARTCLR ILIKE '%RELIANCE%' OR
+      TRAN_PARTCLR ILIKE '%L&T INFOTECH%' OR
+      TRAN_PARTCLR ILIKE '% L&T %' OR
+      TRAN_PARTCLR ILIKE '% LARSEN %' OR
+      TRAN_PARTCLR ILIKE '% BHEL %' OR
+      TRAN_PARTCLR ILIKE '%MINDTREE%' OR
+      TRAN_PARTCLR ILIKE '%TATA STEEL%' OR
+      TRAN_PARTCLR ILIKE '% NTPC %' OR
+      TRAN_PARTCLR ILIKE '% HINDUSTAN AERON %' OR
+      TRAN_PARTCLR ILIKE '% TEAMLEASE %' OR
+      TRAN_PARTCLR ILIKE '% INTERGLOBE AVI %' OR
+      TRAN_PARTCLR ILIKE '% TML %' OR
+      TRAN_PARTCLR ILIKE '% TATA MOTORS %' OR
+      TRAN_PARTCLR ILIKE '% BPCL %' OR
+      TRAN_PARTCLR ILIKE '% MARUTI SUZUKI %' OR
+      TRAN_PARTCLR ILIKE '% HPCL %' OR
+      TRAN_PARTCLR ILIKE '% L&T TECHNOLOGY %' OR
+      TRAN_PARTCLR ILIKE '% NLC INDIA %' OR
+      TRAN_PARTCLR ILIKE '% ITC %' OR
+      TRAN_PARTCLR ILIKE '% ULTRATECHCEMENT %' OR
+      TRAN_PARTCLR ILIKE '% ULTRATECH %' OR
+      TRAN_PARTCLR ILIKE '% MTNL %' OR
+      TRAN_PARTCLR ILIKE '% BHARAT ELEC %' OR
+      TRAN_PARTCLR ILIKE '% BHARAT ELECTRIC %' OR
+      TRAN_PARTCLR ILIKE '% DR.-REDDYSLABS %' OR
+      TRAN_PARTCLR ILIKE '% NALCO %' OR
+      TRAN_PARTCLR ILIKE '% VODAPHONE IDEA %' OR
+      TRAN_PARTCLR ILIKE '% POWER GRID CORP %' OR
+      TRAN_PARTCLR ILIKE '% HINDALCO %' OR
+      TRAN_PARTCLR ILIKE '% CIPLA %' OR
+      TRAN_PARTCLR ILIKE '% OIL INDIA %' OR
+      TRAN_PARTCLR ILIKE '% HERO MOTOCORP %' OR
+      TRAN_PARTCLR ILIKE '% LUPIN %' OR
+      TRAN_PARTCLR ILIKE '% SUN PHARMA %' OR
+      TRAN_PARTCLR ILIKE '% HUL %' OR
+      TRAN_PARTCLR ILIKE '% MPHASIS %' OR
+      TRAN_PARTCLR ILIKE '% GRASIM %' OR
+      TRAN_PARTCLR ILIKE '% ASHOK LEYLAND %' OR
+      TRAN_PARTCLR ILIKE '% AUROBINDO PHARM %' OR
+      TRAN_PARTCLR ILIKE '% SIEMENS %' OR
+      TRAN_PARTCLR ILIKE '% SPICEJET %' OR
+      TRAN_PARTCLR ILIKE '% BHARTI AIRTEL %' OR
+      TRAN_PARTCLR ILIKE '% GAIL %' OR
+      TRAN_PARTCLR ILIKE '% APOLLO HOSPITAL %' OR
+      TRAN_PARTCLR ILIKE '% NHPC %' OR
+      TRAN_PARTCLR ILIKE '% NESTLE %' OR
+      TRAN_PARTCLR ILIKE '% JSW STEEL %' OR
+      TRAN_PARTCLR ILIKE '% COFORGE LTD %' OR
+      TRAN_PARTCLR ILIKE '% BAJAJ AUTO %' OR
+      TRAN_PARTCLR ILIKE '% HINDUJA GLOBAL %' OR
+      TRAN_PARTCLR ILIKE '% BANDHAN BANK %' OR
+      TRAN_PARTCLR ILIKE '% MRF %' OR
+      TRAN_PARTCLR ILIKE '% BOSCH %' OR
+      TRAN_PARTCLR ILIKE '% MOTHERSON SUMI %' OR
+      TRAN_PARTCLR ILIKE '% PUNJAB & SIND %' OR
+      TRAN_PARTCLR ILIKE '% ORACLE FIN SERV %' OR
+      TRAN_PARTCLR ILIKE '% M&M FINANCIAL %' OR
+      TRAN_PARTCLR ILIKE '% PERSISTENT %' OR
+      TRAN_PARTCLR ILIKE '% CADILA HEALTH %' OR
+      TRAN_PARTCLR ILIKE '% GLENMARK %' OR
+      TRAN_PARTCLR ILIKE '% ALKEM LAB %' OR
+      TRAN_PARTCLR ILIKE '% TORRENT PHARMA %' OR
+      TRAN_PARTCLR ILIKE '% ADITYA BIRLA %' OR
+      TRAN_PARTCLR ILIKE '% NMDC %' OR
+      TRAN_PARTCLR ILIKE '% TITAN COMPANY %' OR
+      TRAN_PARTCLR ILIKE '% MUTHOOT FINANCE %' OR
+      TRAN_PARTCLR ILIKE '% SHRIRAM TRANS %' OR
+      TRAN_PARTCLR ILIKE '% TATA COMM %' OR
+      TRAN_PARTCLR ILIKE '% ASIAN PAINTS %' OR
+      TRAN_PARTCLR ILIKE '% CESC %' OR
+      TRAN_PARTCLR ILIKE '% MUTHOOT %' OR
+      TRAN_PARTCLR ILIKE '% ORACLE %' OR
+      TRAN_PARTCLR ILIKE '% MOTHERSON %' OR
+      TRAN_PARTCLR ILIKE '% TITAN %' OR
+      TRAN_PARTCLR ILIKE '%PVT%' OR
+      TRAN_PARTCLR ILIKE '%LTD%' OR
+      TRAN_PARTCLR ILIKE '%PRIVATE%' OR
+      TRAN_PARTCLR ILIKE '%CORP%' OR
+      TRAN_PARTCLR ILIKE '%ENTERPRI%' OR
+      TRAN_PARTCLR ILIKE '% LTD%' OR
+      TRAN_PARTCLR ILIKE '% LIMITED%' OR
+      TRAN_PARTCLR ILIKE '% INDUSTR%' OR
+      TRAN_PARTCLR ILIKE '% IND%' OR
+      TRAN_PARTCLR ILIKE '% INDIA%' OR
+      TRAN_PARTCLR ILIKE '%TECHNOL%' OR
+      TRAN_PARTCLR ILIKE '%GROUP%' OR
+      TRAN_PARTCLR ILIKE '%SERVICE%' OR
+      TRAN_PARTCLR ILIKE '% POWER%' OR
+      TRAN_PARTCLR ILIKE '%INFRAS%' OR
+      TRAN_PARTCLR ILIKE '% LAB%' OR
+      TRAN_PARTCLR ILIKE '%LOGISTIC%' OR
+      TRAN_PARTCLR ILIKE '%CEMENT%' OR
+      TRAN_PARTCLR ILIKE '%AMUL%' OR
+      TRAN_PARTCLR ILIKE '%HEALTH%' OR
+      TRAN_PARTCLR ILIKE '%TYRES%' OR
+      TRAN_PARTCLR ILIKE '%HOSPITAL%' OR
+      TRAN_PARTCLR ILIKE '%ELECTR%' OR
+      TRAN_PARTCLR ILIKE '%MOTOR%' OR
+      TRAN_PARTCLR ILIKE '%PAINTS%' OR
+      TRAN_PARTCLR ILIKE '% AUTO%' OR
+      TRAN_PARTCLR ILIKE '%SYSTEM%' OR
+      TRAN_PARTCLR ILIKE '% COMPAN%' OR
+      TRAN_PARTCLR ILIKE '%PHARMA%' OR
+      TRAN_PARTCLR ILIKE '%AGENC%' OR
+      TRAN_PARTCLR ILIKE '%SHIPP%' OR
+      TRAN_PARTCLR ILIKE '%CHEMICAL%' OR
+      TRAN_PARTCLR ILIKE '%AGRO%' OR
+      TRAN_PARTCLR ILIKE '%CYCLE%' OR
+      TRAN_PARTCLR ILIKE '% TECH%' OR
+      TRAN_PARTCLR ILIKE '%ENERGY%' OR
+      TRAN_PARTCLR ILIKE '%INFRATECH%' OR
+      TRAN_PARTCLR ILIKE '%FIELD%' OR
+      TRAN_PARTCLR ILIKE '%MANAGEMENT%' OR
+      TRAN_PARTCLR ILIKE '%HOTEL%' OR
+      TRAN_PARTCLR ILIKE '%SOLUTION%' OR
+      TRAN_PARTCLR ILIKE '%DEVELOP%' OR
+      TRAN_PARTCLR ILIKE '%RETAIL%' OR
+      TRAN_PARTCLR ILIKE '%INTERNAT%' OR
+      TRAN_PARTCLR ILIKE '%PRODUCT%' OR
+      TRAN_PARTCLR ILIKE '% DELOITTE %' OR
+      TRAN_PARTCLR ILIKE '% IBM %' OR
+      TRAN_PARTCLR ILIKE '%PRIVA DIAM%';
+
+########## CELL 22 (code) ##########
+DROP TABLE IF EXISTS merchants_rg_salp;
+CREATE TEMP TABLE merchants_rg_salp AS
+SELECT *,
+    CASE
+        WHEN 
+            tran_partclr ILIKE '%SALARY%' OR 
+            tran_partclr ILIKE '% SALARY %' OR 
+            tran_partclr ILIKE '%WAGE%' OR
+            tran_partclr ILIKE 'salary%' OR  
+            tran_partclr ILIKE 'sal %' OR 
+            tran_partclr ILIKE '%/salary%' OR 
+            tran_partclr ILIKE '%/salary' OR 
+            tran_partclr ILIKE '%/ salary%' OR
+            tran_partclr ILIKE '%/ sal %' OR
+            tran_partclr ILIKE '%/sal %' OR
+            tran_partclr ILIKE '%/ salar%' OR 
+            tran_partclr ILIKE '%/salar' OR 
+            tran_partclr ILIKE '%-sal' OR  
+            tran_partclr ILIKE '%-sal-%' OR     
+            tran_partclr ILIKE '%cognizantsal%' OR
+            tran_partclr ILIKE '%salar%' OR
+            tran_partclr ILIKE '%payroll%' OR
+            tran_partclr ILIKE '%WAGES%' OR
+            tran_partclr ILIKE '%BULK DEPOSIT%' OR
+            tran_partclr ILIKE  '% INCOME %' or
+            tran_partclr ILIKE  'PROFESSIONAL FEE%' or
+            tran_partclr ILIKE  'STIPEND%' or
+            tran_partclr ILIKE  '%PROFESSIONALFEE%' or
+            tran_partclr ILIKE  '%PROFESSIONAL FEE%' or
+            tran_partclr ILIKE  '%STIPEND%'
+            THEN 'SALARY'
+        WHEN tran_partclr ILIKE '%IFT%' THEN 
+            CASE 
+                WHEN tran_partclr ILIKE '%IFT-%' THEN SPLIT_PART(tran_partclr, '-', 2)
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'IFT\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE 'FROM %' THEN 
+            TRIM(
+                SPLIT_PART(tran_partclr, ' ', 2) || 
+                COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 3), '') || 
+                COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '')
+            )
+        WHEN tran_partclr ILIKE '%NACH%' THEN 
+            CASE 
+                 WHEN tran_partclr ILIKE '%NACH-%' THEN SPLIT_PART(tran_partclr, '-', 4)
+                 ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'NACH\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE 'IB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FUND TRF FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FT FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE 'FUNDS TRF FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%UPI%' THEN 
+            CASE 
+                 WHEN tran_partclr ILIKE '%UPI/%' THEN SPLIT_PART(tran_partclr, '/', 2)
+                 ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'UPI\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%IMPS%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%IMPS/%' THEN SPLIT_PART(tran_partclr, '/', 3)
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'IMPS\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%MB:RECEIVED FROM%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%IB:FUND%' THEN TRIM(SPLIT_PART(tran_partclr, 'FROM', 2))
+        WHEN tran_partclr ILIKE '%NEFT%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%NEFT %' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') ||
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), ''))
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'NEFT\\s*', ''))
+            END
+        WHEN tran_partclr ILIKE '%IB: FUND TRANSFER%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 5) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 8), ''))
+        WHEN tran_partclr ILIKE '%FUND TRANSFER FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 5) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 8), ''))
+        WHEN tran_partclr ILIKE '%FUNDS TRANSFER FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 4) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))    
+        WHEN tran_partclr ILIKE '%FT FROM%' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+            COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))
+        WHEN tran_partclr ILIKE '%RTGS%' THEN 
+            CASE
+                WHEN tran_partclr ILIKE '%RTGS %' THEN TRIM(SPLIT_PART(tran_partclr, ' ', 3) || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 4), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 5), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 6), '') || 
+                    COALESCE(' ' || SPLIT_PART(tran_partclr, ' ', 7), ''))
+                ELSE TRIM(REGEXP_REPLACE(tran_partclr, 'RTGS\\s*', ''))
+            END
+        ELSE TRIM(REGEXP_REPLACE(tran_partclr, '(NEFT|IFT|RTGS|UPI|IMPS|MB):?\\s*', ''))
+    END AS remitter
+FROM Data4_m22;
+
+-- Cleaning Merchant Names --
+DROP TABLE IF exists merchants_rg_sal1p;
+Create TEMP table merchants_rg_sal1p as 
+SELECT 
+    A.*,
+    TRIM(REGEXP_REPLACE(LOWER(A.cleaned_string),
+        '(neft|imps|rtgs|ift|ft|upi|chq|cash|transfer|trf|mb:|payment|paymen)',
+        ' ')) AS Merchant
+FROM (
+    SELECT *, TRIM(REGEXP_REPLACE(remitter, '[^a-zA-Z\s]', ' ')) AS cleaned_string
+    FROM merchants_rg_salp
+) AS A;
+
+########## CELL 23 (code) ##########
+Drop table if exists fxdMerchant2p;
+CREATE TEMP TABLE fxdMerchant2p AS
+SELECT *, ROW_NUMBER() OVER (ORDER BY cust_id, tran_partclr, tran_date, tran_amt_in_ac) AS ID FROM merchants_rg_sal1p;
+
+Drop table if exists fxdMerchant3p;
+CREATE TEMP TABLE fxdMerchant3p AS
+SELECT A.*, B.no_credit_txn from fxdMerchant2p A 
+left join (select cust_Id, count(*) as no_credit_txn from fxdMerchant2p group by cust_id) as B 
+on A.cust_id = b.cust_id;
+
+Drop table if exists Category_level_pm_tr_analysis_4p;
+CREATE TEMP TABLE Category_level_pm_tr_analysis_4p AS
+select * from fxdMerchant3p where no_credit_txn >=3 and no_credit_txn <=100;
+
+Drop table if exists fxdMerchant5p;
+CREATE TEMP TABLE fxdMerchant5p AS
+SELECT A.*, B.no_month_transcted_month 
+from Category_level_pm_tr_analysis_4p A 
+left join (
+    select cust_Id, count(distinct month) as no_month_transcted_month
+    from Category_level_pm_tr_analysis_4p group by cust_id) as B 
+on A.cust_id = b.cust_id;
+
+Drop table if exists Category_level_pm_tr_analysis_5p;
+CREATE TEMP TABLE Category_level_pm_tr_analysis_5p AS
+select * from fxdMerchant5p where no_month_transcted_month >= 3;
+
+########## CELL 24 (code) ##########
+Drop table if exists similarity_parsingDatap;
+Create temp table similarity_parsingDatap as 
+select distinct cust_id, accnt_num, tran_date, tran_amt_in_ac, tran_partclr,merchant,year, month, YEAR || '_' || MONTH AS yr_mnth,
+    dense_rank() over(PARTITION by cust_id order by merchant,tran_date,tran_amt_in_ac,id) as ID
+from Category_level_pm_tr_analysis_5p;
+
+Drop table if exists Simlar_Masterp;
+create TEMP table Simlar_Masterp distkey(partition_num_2) sortkey(cust_id)  as
+select A.*,mod(A.partition_num,20) as partition_num_2 from (select *,DENSE_RANK() over(order by cust_id) as partition_num 
+from similarity_parsingDatap) A;
+
+Drop table if exists BASE_DATAp;
+CREATE TEMP TABLE BASE_DATAp AS -- Elapsed time: 3m 10.3s , Count=1982929612
+SELECT
+      A.CUST_ID AS CUST_ID, 
+      A.MERCHANT AS S1,
+      A.ID AS ID_S1,
+      B.MERCHANT AS S2,
+      B.ID AS ID_S2
+FROM Simlar_Masterp AS A JOIN Simlar_Masterp AS B
+ON A.CUST_ID = B.CUST_ID AND A.ID < B.ID;
+ 
+Drop table if exists UNIQUE_MERCHANTp;
+CREATE TEMP TABLE UNIQUE_MERCHANTp AS      -- Elapsed time: 1m 4.4s , Count=392250465
+SELECT DISTINCT S1, S2 FROM BASE_DATAp;
+ 
+Drop table if exists UNIQUE_MERCHANT_PARTITIONEDp;
+CREATE TEMP TABLE UNIQUE_MERCHANT_PARTITIONEDp AS     -- Elapsed time: 1m 22.5s ,  Count=392250465 (Each Partition: ~ 20 CR)
+SELECT S1, S2, NTILE(2) OVER () AS PARTITION_NUM FROM UNIQUE_MERCHANTp;
+ 
+Drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH_1p;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH_1p AS  -- Elapsed time: 23m 18.9s ,  Count=196125233
+SELECT S1,S2, DIFFERENCE(S1, S2) AS SCORE FROM UNIQUE_MERCHANT_PARTITIONEDp WHERE PARTITION_NUM=1;
+ 
+Drop table if exists UNIQUE_MERCHANT_FUZZY_MATCH_2p;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCH_2p AS -- Elapsed time: 27m 49.9s , Count=196125232
+SELECT S1,S2, DIFFERENCE(S1, S2) AS SCORE FROM UNIQUE_MERCHANT_PARTITIONEDp WHERE PARTITION_NUM=2;
+ 
+Drop table if exists UNIQUE_MERCHANT_FUZZY_MATCHp;
+CREATE TEMP TABLE UNIQUE_MERCHANT_FUZZY_MATCHp AS  -- Elapsed time: 10s , Count=11063223
+SELECT S1,S2, SCORE FROM UNIQUE_MERCHANT_FUZZY_MATCH_1p WHERE SCORE > 3
+UNION ALL
+SELECT S1,S2, SCORE FROM UNIQUE_MERCHANT_FUZZY_MATCH_2p WHERE SCORE > 3;
+ 
+Drop table if exists BASE_DATA_WITH_SCOREp;
+CREATE TEMP TABLE BASE_DATA_WITH_SCOREp AS     -- Elapsed time: 1m 23.5s  , Count=386935804
+SELECT
+    A.CUST_ID AS CUST_ID,
+    A.S1 AS S1,
+    A.ID_S1 AS ID_S1,
+    A.S2 AS S2,
+    A.ID_S2 AS ID_S2,
+    B.SCORE AS SCORE
+FROM BASE_DATAp A INNER JOIN UNIQUE_MERCHANT_FUZZY_MATCHp B
+ON A.S1 = B.S1 AND A.S2 = B.S2;
+
+Drop table if exists SignificantScorep;
+CREATE TEMP TABLE SignificantScorep AS     
+SELECT * from BASE_DATA_WITH_SCOREp where SCORE > 3;
+
+########## CELL 25 (code) ##########
+DROP TABLE IF EXISTS FEB_INCOME_M7p;
+CREATE TEMP TABLE FEB_INCOME_M7p AS
+SELECT *, rank() OVER(PARTITION BY cust_id ORDER BY id_S1) AS CLUSTER_ID
+FROM SignificantScorep;
+
+DROP TABLE IF EXISTS FEB_INCOME_MERCHANT8p;
+CREATE TEMP TABLE FEB_INCOME_MERCHANT8p AS
+SELECT DISTINCT cust_id, id_S2 AS UNIQUE_ID,CLUSTER_ID FROM FEB_INCOME_M7p UNION 
+SELECT DISTINCT cust_id,id_S1 AS UNIQUE_ID, CLUSTER_ID FROM FEB_INCOME_M7p;
+
+DROP TABLE IF EXISTS FEB_INCOME_MERCHANT9p;
+CREATE TEMP TABLE FEB_INCOME_MERCHANT9p AS
+SELECT cust_id, UNIQUE_ID, CLUSTER_ID 
+FROM (SELECT *,ROW_NUMBER() OVER(PARTITION BY cust_id,UNIQUE_ID ORDER BY CLUSTER_ID ASC) AS RNK FROM FEB_INCOME_MERCHANT8p) WHERE RNK = 1;
+
+DROP TABLE IF EXISTS FINAL_TABLEp;
+CREATE TEMP TABLE FINAL_TABLEp AS
+SELECT A.*, B.CLUSTER_ID FROM Simlar_Masterp A
+LEFT JOIN FEB_INCOME_MERCHANT9p B ON A.cust_id = B.cust_id and A.id = B.unique_id;
+
+drop table if exists sandbox.company_test1_rg;
+create table sandbox.company_test1_rg as
+select cust_id, accnt_num, cluster_id, tran_date, tran_amt_in_ac, merchant, tran_partclr, month, year from FINAL_TABLEp;
+select * from sandbox.company_test1_rg;
+
+########## CELL 26 (code) ##########
+SELECT count(DISTINCT cust_id) from sandbox.percent_test1_rg;
+select count(DISTINCT cust_id) from sandbox.salary_test1_rg;
+select count(DISTINCT cust_id) from sandbox.company_test1_rg;
+
+
+
+SELECT * from sandbox.percent_test1_rg where cust_id in ('91108736');
+SELECT * from sandbox.salary_test1_rg where cust_id in ('91108736');
+SELECT * from sandbox.company_test1_rg where cust_id in ('91108736')
+
+
+-- ----- CREATE PRODUCTION TABLES
+-- SELECT column_name, column_default, data_type, character_maximum_length, character_octet_length, numeric_precision, numeric_precision_radix
+-- FROm information_schema.columns
+-- WHERE table_catalog = 'kmbl_risk'
+-- and table_schema = 'sandbox'
+-- and table_name = 'percent_test1_rg';
+
+########## CELL 27 (code) ##########
+
+
+########## CELL 28 (code) ##########
+SELECT max(tran_date) from sandbox.percent_test1_rg;
+SELECT max(tran_date) from sandbox.salary_test1_rg;
+SELECT max(tran_date)  from sandbox.company_test1_rg;
+
+########## CELL 29 (code) ##########
+DROP TABLE IF EXISTS valid_txns_step1p;
+CREATE TEMP TABLE valid_txns_step1p AS
+WITH base AS (
+    SELECT *
+    FROM sandbox.percent_test1_rg
+    WHERE cluster_id IS NOT NULL
+),
+ranked_txns AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY cust_id, cluster_id, month
+               ORDER BY tran_amt_in_ac DESC, tran_date ASC
+           ) AS rn
+    FROM base
+),
+max_per_month AS (
+    SELECT *
+    FROM ranked_txns
+    WHERE rn = 1
+),
+valid_customers AS (
+    SELECT cust_id, cluster_id
+    FROM max_per_month
+    GROUP BY cust_id, cluster_id
+    HAVING COUNT(DISTINCT month) >= 3
+       AND COUNT(*) BETWEEN 3 AND 7
+)
+SELECT m.*
+FROM max_per_month m
+JOIN valid_customers v
+  ON m.cust_id = v.cust_id
+ AND m.cluster_id = v.cluster_id;
+
+########## CELL 30 (code) ##########
+DROP TABLE IF EXISTS flagged_txns_step2p;
+CREATE TEMP TABLE flagged_txns_step2p AS
+WITH date_flags AS (
+    SELECT vt.*,
+        EXTRACT(DAY FROM tran_date) AS trans_day,
+        EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+            PARTITION BY cust_id 
+            ORDER BY tran_date 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        )) AS base_day,
+        CASE 
+            WHEN LEAST(
+                ABS(EXTRACT(DAY FROM tran_date) - EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+                    PARTITION BY cust_id 
+                    ORDER BY tran_date 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ))),
+                31 - ABS(EXTRACT(DAY FROM tran_date) - EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+                    PARTITION BY cust_id 
+                    ORDER BY tran_date 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                )))
+            ) <= 5
+            THEN 1 ELSE 0
+        END AS day_diff_in_5
+    FROM valid_txns_step1p vt
+),
+median_amt_per_cluster AS (
+    SELECT cust_id, cluster_id, PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tran_amt_in_ac) AS median_amt
+    FROM date_flags
+    GROUP BY cust_id, cluster_id
+),
+amount_flags AS (
+    SELECT df.*, m.median_amt,
+           CASE WHEN ABS(tran_amt_in_ac - m.median_amt) <= 0.2 * m.median_amt THEN 1 ELSE 0 END AS range_status,
+           CASE WHEN ABS(tran_amt_in_ac - m.median_amt) <= 0.5 * m.median_amt THEN 1 ELSE 0 END AS range_status_50_per
+    FROM date_flags df
+    JOIN median_amt_per_cluster m
+      ON df.cust_id = m.cust_id
+     AND df.cluster_id = m.cluster_id
+)
+SELECT * FROM amount_flags;
+
+########## CELL 31 (code) ##########
+DROP TABLE IF EXISTS flagged_txns_step3p1;
+CREATE TABLE flagged_txns_step3p1 AS
+WITH amount_summary AS (
+    SELECT 
+        cust_id, cluster_id,
+        SUM(range_status) AS range_status_1,
+        COUNT(*) AS total_cnt,
+        SUM(range_status_50_per) AS range_status_50_per1
+    FROM flagged_txns_step2p
+    GROUP BY cust_id, cluster_id
+),
+month_tagged AS (
+    SELECT *,
+        CASE 
+            WHEN MONTH = 1 THEN 'A'     
+            WHEN MONTH = 2 THEN 'B'
+            WHEN MONTH = 3 THEN 'C'
+            WHEN MONTH = 4 THEN 'D'
+            WHEN MONTH = 5 THEN 'E'
+            WHEN MONTH = 6 THEN 'F'
+            WHEN MONTH = 7 THEN 'G'
+            WHEN MONTH = 8 THEN 'H'
+            WHEN MONTH = 9 THEN 'I'
+            WHEN MONTH = 10 THEN 'J'
+            WHEN MONTH = 11 THEN 'K'
+            WHEN MONTH = 12 THEN 'L'
+        END AS month_tag
+    FROM flagged_txns_step2p
+),
+ranked_months AS (
+    SELECT cust_id, cluster_id, month_tag, tran_date,
+           ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id ORDER BY tran_date) AS rn
+    FROM month_tagged
+),
+consecutive_flag AS (
+    SELECT a.cust_id, a.cluster_id,
+           MAX(
+             CASE WHEN ((ASCII(a.month_tag) - 65 + 1) % 26) = (ASCII(b.month_tag) - 65)
+                    AND ((ASCII(b.month_tag) - 65 + 1) % 26) = (ASCII(c.month_tag) - 65)
+                  THEN 1 ELSE 0 
+                END
+           ) AS consecutive
+    FROM ranked_months a
+    JOIN ranked_months b ON a.cust_id = b.cust_id AND a.cluster_id = b.cluster_id AND b.rn = a.rn + 1
+    JOIN ranked_months c ON a.cust_id = c.cust_id AND a.cluster_id = c.cluster_id AND c.rn = b.rn + 1
+    GROUP BY a.cust_id, a.cluster_id
+),
+last3_stats AS (
+    SELECT cust_id, cluster_id,
+           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tran_amt_in_ac) AS median_amt,
+           MIN(tran_amt_in_ac) AS min_amt
+    FROM (
+        SELECT cust_id, cluster_id, tran_amt_in_ac,
+               ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id ORDER BY tran_date DESC) AS rn
+        FROM flagged_txns_step2p
+    )
+    WHERE rn <= 3
+    GROUP BY cust_id, cluster_id
+),
+final_salary AS (
+    SELECT 
+        s.cust_id,
+        s.cluster_id,
+        CASE WHEN a.range_status_1 = a.total_cnt THEN s.median_amt ELSE s.min_amt END AS final_salary_amt,
+        CASE WHEN a.range_status_1 = a.total_cnt THEN 'MEDIAN' ELSE 'MIN' END AS identifier,
+        cf.consecutive,
+        a.range_status_50_per1
+    FROM last3_stats s
+    JOIN amount_summary a 
+      ON s.cust_id = a.cust_id
+     AND s.cluster_id = a.cluster_id
+    LEFT JOIN consecutive_flag cf 
+      ON s.cust_id = cf.cust_id
+     AND s.cluster_id = cf.cluster_id
+)
+SELECT f.*, t.accnt_num, t.month, t.tran_date, t.merchant, t.tran_partclr,
+       t.tran_amt_in_ac, t.day_diff_in_5, t.range_status, t.range_status_50_per
+FROM final_salary f
+JOIN flagged_txns_step2p t 
+  ON f.cust_id = t.cust_id
+ AND f.cluster_id = t.cluster_id
+ORDER BY cust_id, cluster_id, month;
+
+########## CELL 32 (code) ##########
+-- SELECT * from sandbox.percent_test1_rg order by cust_id;
+-- select * from valid_txns_step1p order by cust_id;
+-- select * from flagged_txns_step2p;
+-- SELECT * from flagged_txns_step3p1;
+
+drop table if exists sandbox.company_test2_rg ;
+drop table if exists sandbox.percent_test2_rg ;
+drop table if exists sandbox.salary_test2_rg ;
+create table sandbox.percent_test2_rg as 
+SELECT accnt_num, cust_id, final_salary_amt, identifier, consecutive, 
+day_diff_in_5, month, tran_date, merchant, tran_partclr, tran_amt_in_ac from flagged_txns_step3p1;
+
+########## CELL 33 (code) ##########
+DROP TABLE IF EXISTS valid_txns_step1t;
+CREATE TEMP TABLE valid_txns_step1t AS
+WITH base AS (
+    SELECT *
+    FROM sandbox.salary_test1_rg
+    WHERE cluster_id IS NOT NULL
+),
+ranked_txns AS (
+    SELECT *,
+           ROW_NUMBER() OVER (
+               PARTITION BY cust_id, cluster_id, month
+               ORDER BY tran_amt_in_ac DESC, tran_date ASC
+           ) AS rn
+    FROM base
+),
+max_per_month AS (
+    SELECT *
+    FROM ranked_txns
+    WHERE rn = 1
+),
+valid_customers AS (
+    SELECT cust_id, cluster_id
+    FROM max_per_month
+    GROUP BY cust_id, cluster_id
+    HAVING COUNT(DISTINCT month) >= 3
+       AND COUNT(*) BETWEEN 3 AND 7
+)
+SELECT m.*
+FROM max_per_month m
+JOIN valid_customers v
+  ON m.cust_id = v.cust_id
+ AND m.cluster_id = v.cluster_id;
+
+DROP TABLE IF EXISTS flagged_txns_step2t;
+CREATE TEMP TABLE flagged_txns_step2t AS
+WITH date_flags AS (
+    SELECT vt.*,
+        EXTRACT(DAY FROM tran_date) AS trans_day,
+        EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+            PARTITION BY cust_id 
+            ORDER BY tran_date 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        )) AS base_day,
+        CASE 
+            WHEN LEAST(
+                ABS(EXTRACT(DAY FROM tran_date) - EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+                    PARTITION BY cust_id 
+                    ORDER BY tran_date 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ))),
+                31 - ABS(EXTRACT(DAY FROM tran_date) - EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+                    PARTITION BY cust_id 
+                    ORDER BY tran_date 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                )))
+            ) <= 5
+            THEN 1 ELSE 0
+        END AS day_diff_in_5
+    FROM valid_txns_step1t vt
+),
+median_amt_per_cluster AS (
+    SELECT cust_id, cluster_id,
+           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tran_amt_in_ac) AS median_amt
+    FROM date_flags
+    GROUP BY cust_id, cluster_id
+),
+amount_flags AS (
+    SELECT df.*, m.median_amt,
+           CASE WHEN ABS(tran_amt_in_ac - m.median_amt) <= 0.2 * m.median_amt THEN 1 ELSE 0 END AS range_status,
+           CASE WHEN ABS(tran_amt_in_ac - m.median_amt) <= 0.5 * m.median_amt THEN 1 ELSE 0 END AS range_status_50_per
+    FROM date_flags df
+    JOIN median_amt_per_cluster m
+      ON df.cust_id = m.cust_id
+     AND df.cluster_id = m.cluster_id
+)
+SELECT * FROM amount_flags;
+
+DROP TABLE IF EXISTS flagged_txns_step3t1;
+CREATE TABLE flagged_txns_step3t1 AS
+WITH amount_summary AS (
+    SELECT 
+        cust_id, cluster_id,
+        SUM(range_status) AS range_status_1,
+        COUNT(*) AS total_cnt,
+        SUM(range_status_50_per) AS range_status_50_per1
+    FROM flagged_txns_step2t
+    GROUP BY cust_id, cluster_id
+),
+month_tagged AS (
+    SELECT *,
+        CASE 
+            WHEN MONTH = 1 THEN 'A'     
+            WHEN MONTH = 2 THEN 'B'
+            WHEN MONTH = 3 THEN 'C'
+            WHEN MONTH = 4 THEN 'D'
+            WHEN MONTH = 5 THEN 'E'
+            WHEN MONTH = 6 THEN 'F'
+            WHEN MONTH = 7 THEN 'G'
+            WHEN MONTH = 8 THEN 'H'
+            WHEN MONTH = 9 THEN 'I'
+            WHEN MONTH = 10 THEN 'J'
+            WHEN MONTH = 11 THEN 'K'
+            WHEN MONTH = 12 THEN 'L'
+        END AS month_tag
+    FROM flagged_txns_step2t
+),
+ranked_months AS (
+    SELECT cust_id, cluster_id, month_tag, tran_date,
+           ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id ORDER BY tran_date) AS rn
+    FROM month_tagged
+),
+consecutive_flag AS (
+    SELECT a.cust_id, a.cluster_id,
+           MAX(
+             CASE WHEN ((ASCII(a.month_tag) - 65 + 1) % 26) = (ASCII(b.month_tag) - 65)
+                    AND ((ASCII(b.month_tag) - 65 + 1) % 26) = (ASCII(c.month_tag) - 65)
+                  THEN 1 ELSE 0 
+                END
+           ) AS consecutive
+    FROM ranked_months a
+    JOIN ranked_months b ON a.cust_id = b.cust_id AND a.cluster_id = b.cluster_id AND b.rn = a.rn + 1
+    JOIN ranked_months c ON a.cust_id = c.cust_id AND a.cluster_id = c.cluster_id AND c.rn = b.rn + 1
+    GROUP BY a.cust_id, a.cluster_id
+),
+last3_stats AS (
+    SELECT cust_id, cluster_id,
+           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tran_amt_in_ac) AS median_amt,
+           MIN(tran_amt_in_ac) AS min_amt
+    FROM (
+        SELECT cust_id, cluster_id, tran_amt_in_ac,
+               ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id ORDER BY tran_date DESC) AS rn
+        FROM flagged_txns_step2t
+    )
+    WHERE rn <= 3
+    GROUP BY cust_id, cluster_id
+),
+final_salary AS (
+    SELECT 
+        s.cust_id,
+        s.cluster_id,
+        CASE WHEN a.range_status_1 = a.total_cnt THEN s.median_amt ELSE s.min_amt END AS final_salary_amt,
+        CASE WHEN a.range_status_1 = a.total_cnt THEN 'MEDIAN' ELSE 'MIN' END AS identifier,
+        cf.consecutive,
+        a.range_status_50_per1
+    FROM last3_stats s
+    JOIN amount_summary a 
+      ON s.cust_id = a.cust_id
+     AND s.cluster_id = a.cluster_id
+    LEFT JOIN consecutive_flag cf 
+      ON s.cust_id = cf.cust_id
+     AND s.cluster_id = cf.cluster_id
+)
+SELECT f.*, t.accnt_num, t.month, t.tran_date, t.merchant, t.tran_partclr,
+       t.tran_amt_in_ac, t.day_diff_in_5, t.range_status, t.range_status_50_per
+FROM final_salary f
+JOIN flagged_txns_step2t t 
+  ON f.cust_id = t.cust_id
+ AND f.cluster_id = t.cluster_id
+ORDER BY cust_id, cluster_id, month;
+
+########## CELL 34 (code) ##########
+DROP TABLE IF EXISTS valid_txns_step1s;
+CREATE TEMP TABLE valid_txns_step1s AS
+WITH base AS (
+    SELECT * FROM sandbox.company_test1_rg WHERE cluster_id IS NOT NULL
+),
+ranked_txns AS (
+    SELECT *, ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id, month ORDER BY tran_amt_in_ac DESC, tran_date ASC ) AS rn
+    FROM base
+),
+max_per_month AS (SELECT * FROM ranked_txns WHERE rn = 1
+),
+valid_customers AS (
+    SELECT cust_id, cluster_id FROM max_per_month GROUP BY cust_id, cluster_id
+    HAVING COUNT(DISTINCT month) >= 3 AND COUNT(*) BETWEEN 3 AND 7
+)
+SELECT m.*
+FROM max_per_month m
+JOIN valid_customers v
+  ON m.cust_id = v.cust_id
+ AND m.cluster_id = v.cluster_id;
+
+DROP TABLE IF EXISTS flagged_txns_step2s;
+CREATE TEMP TABLE flagged_txns_step2s AS
+WITH date_flags AS (
+    SELECT vt.*,
+        EXTRACT(DAY FROM tran_date) AS trans_day,
+        EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+            PARTITION BY cust_id 
+            ORDER BY tran_date 
+            ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        )) AS base_day,
+        CASE 
+            WHEN LEAST(
+                ABS(EXTRACT(DAY FROM tran_date) - EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+                    PARTITION BY cust_id 
+                    ORDER BY tran_date 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                ))),
+                31 - ABS(EXTRACT(DAY FROM tran_date) - EXTRACT(DAY FROM FIRST_VALUE(tran_date) OVER (
+                    PARTITION BY cust_id 
+                    ORDER BY tran_date 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+                )))
+            ) <= 5
+            THEN 1 ELSE 0
+        END AS day_diff_in_5
+    FROM valid_txns_step1s vt
+),
+median_amt_per_cluster AS (
+    SELECT cust_id, cluster_id,PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tran_amt_in_ac) AS median_amt
+    FROM date_flags
+    GROUP BY cust_id, cluster_id
+),
+amount_flags AS (
+    SELECT df.*, m.median_amt,
+           CASE WHEN ABS(tran_amt_in_ac - m.median_amt) <= 0.2 * m.median_amt THEN 1 ELSE 0 END AS range_status,
+           CASE WHEN ABS(tran_amt_in_ac - m.median_amt) <= 0.5 * m.median_amt THEN 1 ELSE 0 END AS range_status_50_per
+    FROM date_flags df
+    JOIN median_amt_per_cluster m
+      ON df.cust_id = m.cust_id
+     AND df.cluster_id = m.cluster_id
+)
+SELECT * FROM amount_flags;
+
+DROP TABLE IF EXISTS flagged_txns_step3s1;
+CREATE TABLE flagged_txns_step3s1 AS
+WITH amount_summary AS (
+    SELECT cust_id, cluster_id,
+        SUM(range_status) AS range_status_1,
+        COUNT(*) AS total_cnt,
+        SUM(range_status_50_per) AS range_status_50_per1
+    FROM flagged_txns_step2s
+    GROUP BY cust_id, cluster_id
+),
+month_tagged AS (
+    SELECT *,
+        CASE 
+            WHEN MONTH = 1 THEN 'A'     
+            WHEN MONTH = 2 THEN 'B'
+            WHEN MONTH = 3 THEN 'C'
+            WHEN MONTH = 4 THEN 'D'
+            WHEN MONTH = 5 THEN 'E'
+            WHEN MONTH = 6 THEN 'F'
+            WHEN MONTH = 7 THEN 'G'
+            WHEN MONTH = 8 THEN 'H'
+            WHEN MONTH = 9 THEN 'I'
+            WHEN MONTH = 10 THEN 'J'
+            WHEN MONTH = 11 THEN 'K'
+            WHEN MONTH = 12 THEN 'L'
+        END AS month_tag
+    FROM flagged_txns_step2s
+),
+ranked_months AS (
+    SELECT cust_id, cluster_id, month_tag, tran_date, ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id ORDER BY tran_date) AS rn
+    FROM month_tagged
+),
+consecutive_flag AS (
+    SELECT a.cust_id, a.cluster_id,
+           MAX(
+             CASE WHEN ((ASCII(a.month_tag) - 65 + 1) % 26) = (ASCII(b.month_tag) - 65)
+                    AND ((ASCII(b.month_tag) - 65 + 1) % 26) = (ASCII(c.month_tag) - 65)
+                  THEN 1 ELSE 0 
+                END
+           ) AS consecutive
+    FROM ranked_months a
+    JOIN ranked_months b ON a.cust_id = b.cust_id AND a.cluster_id = b.cluster_id AND b.rn = a.rn + 1
+    JOIN ranked_months c ON a.cust_id = c.cust_id AND a.cluster_id = c.cluster_id AND c.rn = b.rn + 1
+    GROUP BY a.cust_id, a.cluster_id
+),
+last3_stats AS (
+    SELECT cust_id, cluster_id,
+           PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY tran_amt_in_ac) AS median_amt,
+           MIN(tran_amt_in_ac) AS min_amt
+    FROM (
+        SELECT cust_id, cluster_id, tran_amt_in_ac,
+               ROW_NUMBER() OVER (PARTITION BY cust_id, cluster_id ORDER BY tran_date DESC) AS rn
+        FROM flagged_txns_step2s
+    )
+    WHERE rn <= 3
+    GROUP BY cust_id, cluster_id
+),
+final_salary AS (
+    SELECT 
+        s.cust_id,
+        s.cluster_id,
+        CASE WHEN a.range_status_1 = a.total_cnt THEN s.median_amt ELSE s.min_amt END AS final_salary_amt,
+        CASE WHEN a.range_status_1 = a.total_cnt THEN 'MEDIAN' ELSE 'MIN' END AS identifier,
+        cf.consecutive,
+        a.range_status_50_per1
+    FROM last3_stats s
+    JOIN amount_summary a 
+      ON s.cust_id = a.cust_id
+     AND s.cluster_id = a.cluster_id
+    LEFT JOIN consecutive_flag cf 
+      ON s.cust_id = cf.cust_id
+     AND s.cluster_id = cf.cluster_id
+)
+SELECT f.*, t.accnt_num, t.month, t.tran_date, t.merchant, t.tran_partclr,
+       t.tran_amt_in_ac, t.day_diff_in_5, t.range_status, t.range_status_50_per
+FROM final_salary f
+JOIN flagged_txns_step2s t 
+  ON f.cust_id = t.cust_id
+ AND f.cluster_id = t.cluster_id
+ORDER BY cust_id, cluster_id, month;
+
+########## CELL 35 (code) ##########
+drop table if exists sandbox.salary_test2_rg;
+create table sandbox.salary_test2_rg as 
+SELECT accnt_num, cust_id, final_salary_amt, identifier, consecutive, 
+day_diff_in_5, month, tran_date, merchant, tran_partclr, tran_amt_in_ac from flagged_txns_step3t1;
+
+drop table if exists sandbox.company_test2_rg;
+create table sandbox.company_test2_rg as 
+SELECT accnt_num, cust_id, final_salary_amt, identifier, consecutive, day_diff_in_5, 
+month, tran_date, merchant, tran_partclr, tran_amt_in_ac from flagged_txns_step3s1;
+
+########## CELL 36 (code) ##########
+SELECT count(distinct cust_id) from sandbox.percent_test2_rg;
+SELECT count(distinct cust_id) from sandbox.salary_test2_rg;
+SELECT count(distinct cust_id)  from sandbox.company_test2_rg;
+
+
+
+SELECT * from sandbox.percent_test2_rg where cust_id in ('91108736');
+SELECT * from sandbox.salary_test2_rg where cust_id in ('91108736');
+SELECT *  from sandbox.company_test2_rg where cust_id in ('91108736');
+
+########## CELL 37 (code) ##########
+-- -- IGNORE
+-- DROP TABLE IF EXISTS sandbox.salary_strings_final;
+-- CREATE TABLE sandbox.salary_strings_final AS
+-- WITH
+-- -- Detect which methods have data for each cust_id
+-- salary_custs AS (SELECT DISTINCT cust_id FROM sandbox.salary_test2_rg),
+-- percent_custs AS (SELECT DISTINCT cust_id FROM sandbox.percent_test2_rg),
+-- company_custs AS (SELECT DISTINCT cust_id FROM sandbox.company_test2_rg),
+-- method_candidates AS (
+--     SELECT cust_id, 'Salary'  AS method_name, 1 AS priority FROM salary_custs UNION ALL
+--     SELECT cust_id, 'Percent' AS method_name, 2 AS priority FROM percent_custs UNION ALL
+--     SELECT cust_id, 'Company' AS method_name, 3 AS priority FROM company_custs),
+-- chosen_method AS (
+--     SELECT cust_id, MIN(priority) AS chosen_priority
+--     FROM method_candidates
+--     GROUP BY cust_id),
+-- -- Bring all rows from the chosen method table for each cust_id
+-- salary_rows AS (
+--     SELECT s.*, 'Salary' AS chosen_method, 1 AS method_priority,
+--         'sandbox.salary_test2_rg' AS source_table
+--     FROM sandbox.salary_test2_rg s
+--     JOIN chosen_method cm ON cm.cust_id = s.cust_id AND cm.chosen_priority = 1),
+-- percent_rows AS (
+--     SELECT p.*, 'Percent' AS chosen_method, 2 AS method_priority,
+--         'sandbox.percent_test2_rg' AS source_table
+--     FROM sandbox.percent_test2_rg p
+--     JOIN chosen_method cm ON cm.cust_id = p.cust_id AND cm.chosen_priority = 2),
+-- company_rows AS (
+--     SELECT c.*, 'Company' AS chosen_method, 3 AS method_priority,
+--         'sandbox.company_test2_rg' AS source_table
+--     FROM sandbox.company_test2_rg c
+--     JOIN chosen_method cm ON cm.cust_id = c.cust_id AND cm.chosen_priority = 3)
+-- SELECT * FROM salary_rows UNION ALL
+-- SELECT * FROM percent_rows UNION ALL
+-- SELECT * FROM company_rows;
+
+########## CELL 38 (code) ##########
+-- ============================================================================
+-- 1) CREATE FINAL STRINGS TABLE (one method per cust_id, then take ALL rows)
+--    Table: sandbox.salary_strings_final1_dec25
+-- ============================================================================
+DROP TABLE IF EXISTS sandbox.salary_strings_final1_july26;
+CREATE TABLE sandbox.salary_strings_final1_july26 AS
+WITH
+-- Detect which methods have data for each cust_id
+salary_custs AS (SELECT DISTINCT cust_id FROM sandbox.salary_test2_rg),
+percent_custs AS (SELECT DISTINCT cust_id FROM sandbox.percent_test2_rg),
+company_custs AS (SELECT DISTINCT cust_id FROM sandbox.company_test2_rg),
+method_candidates AS (
+    SELECT cust_id, 'Salary'  AS method_name, 1 AS priority FROM salary_custs UNION ALL
+    SELECT cust_id, 'Percent' AS method_name, 2 AS priority FROM percent_custs UNION ALL
+    SELECT cust_id, 'Company' AS method_name, 3 AS priority FROM company_custs),
+chosen_method AS (
+    SELECT cust_id, MIN(priority) AS chosen_priority
+    FROM method_candidates
+    GROUP BY cust_id),
+-- Bring all rows from the chosen method table for each cust_id
+salary_rows AS (
+    SELECT s.*, 'Salary' AS chosen_method, 1 AS method_priority,
+           'sandbox.salary_test2_rg' AS source_table
+    FROM sandbox.salary_test2_rg s
+    JOIN chosen_method cm ON cm.cust_id = s.cust_id AND cm.chosen_priority = 1),
+percent_rows AS (
+    SELECT p.*, 'Percent' AS chosen_method, 2 AS method_priority,
+           'sandbox.percent_test2_rg' AS source_table
+    FROM sandbox.percent_test2_rg p
+    JOIN chosen_method cm ON cm.cust_id = p.cust_id AND cm.chosen_priority = 2),
+company_rows AS (
+    SELECT c.*, 'Company' AS chosen_method, 3 AS method_priority,
+           'sandbox.company_test2_rg' AS source_table
+    FROM sandbox.company_test2_rg c
+    JOIN chosen_method cm ON cm.cust_id = c.cust_id AND cm.chosen_priority = 3),
+latest_month AS (
+    SELECT cust_id, MAX(month) AS max_month
+    FROM (
+        SELECT cust_id, month FROM sandbox.salary_test2_rg UNION ALL
+        SELECT cust_id, month FROM sandbox.percent_test2_rg UNION ALL
+        SELECT cust_id, month FROM sandbox.company_test2_rg) all_months
+    GROUP BY cust_id)
+
+SELECT f.*, CASE WHEN f.month = 6 THEN 1 ELSE 0 END AS latest_month_flag
+FROM (
+    SELECT * FROM salary_rows UNION ALL
+    SELECT * FROM percent_rows UNION ALL
+    SELECT * FROM company_rows) f
+JOIN latest_month lm ON f.cust_id = lm.cust_id;
+
+########## CELL 39 (code) ##########
+select * from sandbox.salary_strings_final1_july26;
+select count(distinct cust_id) from sandbox.salary_strings_final1_july26;
+select chosen_method, count(distinct cust_id) from sandbox.salary_strings_final1_july26 group by chosen_method;
+select max(tran_date) from sandbox.salary_strings_final1_july26;
+
+ALTER TABLE sandbox.salary_strings_final1_july26 ADD COLUMN PENSION_PAY_FLAG INTEGER;
+UPDATE sandbox.salary_strings_final1_july26
+SET PENSION_PAY_FLAG = CASE WHEN tran_partclr LIKE '%PENSION%' THEN 1 ELSE 0
+END;
+
+########## CELL 40 (code) ##########
+drop table if exists sandbox.cust_name;
+create table sandbox.cust_name as 
+select 
+    DISTINCT
+    CUST_ID, 
+    PRTY_NAME as customer_name
+    FROM kmbl_dex.bl_vw.fct_liability_txn
+    WHERE 
+        (TRAN_DATE between '20260101' AND '20260630') AND 
+        DR_CR_INDCTOR = 'C' AND
+        TRAN_AMT_IN_AC>=10000
+
+########## CELL 41 (code) ##########
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_feb26;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_mar26;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_apr26;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_may26;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_jun26;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_july26;
+
+
+SELECT * from sandbox.salary_strings_final1_apr26 where merchant not ilike '%salary%';
+
+########## CELL 42 (code) ##########
+drop table if exists sandbox.salary_strings_final1_july261;
+create table sandbox.salary_strings_final1_july261 as
+select a.*, lower(b.customer_name) as cust_name, lower(a.tran_partclr) as trxn, lower(a.merchant) as l_merchant
+from sandbox.salary_strings_final1_july26 a 
+left join sandbox.cust_name b 
+on a.cust_id = b.cust_id;
+
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_july261;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_jun261;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_may261;
+SELECT count(*), count(distinct cust_id) from sandbox.salary_strings_final1_apr26;
+select * from sandbox.salary_strings_final1_july261;
+
+########## CELL 43 (code) ##########
+-- select difference('NEFT ICIN127299927441 SUMIT GULATI ICIC0SF0002', 'SUMIT GULATI ICIC SF');
+-- select fuzzy_score('SUMIT GULATI', 'SUMIT GULATI ICIC SF');
+select fuzzy_score('nitesh mantri hdfc', 'nitesh harinarain mantri');
+select difference('nitesh mantri hdfc', 'nitesh harinarain mantri');
+SELECT * from sandbox.salary_strings_final1_jun261 where cust_id in ('100004298')
+
+########## CELL 44 (code) ##########
+ALTER TABLE sandbox.salary_strings_final1_july261 ADD COLUMN score INT;
+ALTER TABLE sandbox.salary_strings_final1_july261 ADD COLUMN flag INT;
+
+UPDATE sandbox.salary_strings_final1_july261
+SET score = CASE
+    WHEN cust_name IS NULL OR trxn IS NULL THEN 0
+    ELSE fuzzy_score(cust_name, l_merchant)
+END;
+
+UPDATE sandbox.salary_strings_final1_july261
+SET flag = CASE
+    WHEN (score > 60 and l_merchant not ilike '%salary%') THEN 1 ELSE 0
+END;
+
+########## CELL 45 (code) ##########
+SELECT count(distinct cust_id) from sandbox.salary_strings_final1_july261 where month = 6 and latest_month_flag = 1;
+SELECT * from sandbox.salary_strings_final1_july261 where flag = 1 and score < 70;
+SELECT * from sandbox.salary_strings_final1_july261 where l_merchant ilike '%salary%' and flag = 1;
+SELECT * from sandbox.salary_strings_final1_july261 where cust_id in ('100004298')
+
+########## CELL 46 (code) ##########
+DROP TABLE IF EXISTS sandbox.salary_summary_final;
+CREATE TABLE sandbox.salary_summary_final AS
+SELECT
+    cust_id AS crn,
+    MAX(final_salary_amt) AS final_salary,
+    MAX(identifier) AS identifier,
+    MAX(consecutive) AS consecutive,
+    MIN(day_diff_in_5) AS day_diff_in_5,
+    MAX(chosen_method) AS method,
+    MAX(latest_month_flag) AS latest_month_flag,
+    MAX(PENSION_PAY_FLAG) as PENSION_PAY_FLAG,
+    MAX(flag) as self_transfer,
+    -- Pivot transaction amounts by month
+    MAX(CASE WHEN month = 1 THEN tran_amt_in_ac END) AS month_1_amt,
+    MAX(CASE WHEN month = 2 THEN tran_amt_in_ac END) AS month_2_amt,
+    MAX(CASE WHEN month = 3 THEN tran_amt_in_ac END) AS month_3_amt,
+    MAX(CASE WHEN month = 4 THEN tran_amt_in_ac END) AS month_4_amt,
+    MAX(CASE WHEN month = 5 THEN tran_amt_in_ac END) AS month_5_amt,
+    MAX(CASE WHEN month = 6 THEN tran_amt_in_ac END) AS month_6_amt,
+    MAX(CASE WHEN month = 7 THEN tran_amt_in_ac END) AS month_7_amt,
+    MAX(CASE WHEN month = 8 THEN tran_amt_in_ac END) AS month_8_amt,
+    MAX(CASE WHEN month = 9 THEN tran_amt_in_ac END) AS month_9_amt,
+    MAX(CASE WHEN month = 10 THEN tran_amt_in_ac END) AS month_10_amt,
+    MAX(CASE WHEN month = 11 THEN tran_amt_in_ac END) AS month_11_amt,
+    MAX(CASE WHEN month = 12 THEN tran_amt_in_ac END) AS month_12_amt
+FROM sandbox.salary_strings_final1_july261
+GROUP BY cust_id;
+
+ALTER TABLE sandbox.salary_summary_final ADD COLUMN Income_Type_Flag VARCHAR(50);
+UPDATE sandbox.salary_summary_final
+SET Income_Type_Flag = CASE 
+    WHEN latest_month_flag > 0 AND Consecutive > 0 AND Day_diff_in_5 > 0 THEN 'LATEM_CONSE_WT5'
+    WHEN latest_month_flag > 0 AND Consecutive = 0 AND Day_diff_in_5 > 0 THEN 'LATEM_NCONSE_WT5'
+    WHEN latest_month_flag > 0 AND Consecutive > 0 AND Day_diff_in_5 = 0 THEN 'LATEM_CONSE_NWT5'
+    WHEN latest_month_flag > 0 AND Consecutive = 0 AND Day_diff_in_5 = 0 THEN 'LATEM_NCONSE_NWT5'
+    WHEN latest_month_flag = 0 AND Consecutive > 0 AND Day_diff_in_5 > 0 THEN 'NLATEM_CONSE_WT5'
+    WHEN latest_month_flag = 0 AND Consecutive = 0 AND Day_diff_in_5 > 0 THEN 'NLATEM_NCONSE_WT5'
+    WHEN latest_month_flag = 0 AND Consecutive > 0 AND Day_diff_in_5 = 0 THEN 'NLATEM_CONSE_NWT5'
+    WHEN latest_month_flag = 0 AND Consecutive = 0 AND Day_diff_in_5 = 0 THEN 'NLATEM_NCONSE_NWT5'
+    ELSE 'NA'
+END;
+select * from sandbox.salary_summary_final;
+
+-- CODE FINISHES
